@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A console runner rather than a test framework, matching the flipper's Tests project - the
+    useful output is the whole table side by side, and a framework reports the first failure and
+    hides the rest.
+
+    Unlike that one, this sits inside the plugin folder rather than beside it. The plugin csproj has
+    to be at the top of the repository for PluginUpdater to clone and build it, so the repository
+    root *is* the plugin folder and there is no "beside it" to use. ExileInput2.csproj therefore
+    removes Tests\** from its compile, or the HUD would build a console Main into a plugin library.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>ExileInput2Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ExileInput2.csproj" />
+  </ItemGroup>
+
+  <!--
+    ExileCore2, only because the pointer takes a GameController and the cases construct one with
+    null. Nothing here calls into it - the two seams stand in for the game - but the type has to be
+    resolvable for the constructor to bind.
+  -->
+  <ItemGroup>
+    <Reference Include="ExileCore2">
+      <HintPath>$(exileCore2Package)\ExileCore2.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="GameOffsets2">
+      <HintPath>$(exileCore2Package)\GameOffsets2.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

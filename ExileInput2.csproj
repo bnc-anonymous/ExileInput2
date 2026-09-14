@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=$(MSBuildProjectName)</PathMap>
+    <EmbedAllSources>true</EmbedAllSources>
+
+    <!--Don't bother setting anything to do with the output path, HUD will do it for you if you put the source code inside Plugins/Source-->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="ExileCore2">
+      <HintPath>$(exileCore2Package)\ExileCore2.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="GameOffsets2">
+      <HintPath>$(exileCore2Package)\GameOffsets2.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!--
+    The tests reach the internals rather than the internals being made public for them. What is
+    worth checking here - a journey, a lease, the arithmetic that bounds a landing - is all detail
+    behind a bridge whose surface is deliberately small, and widening that surface so a test can
+    see it would be letting the test design the plugin.
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>ExileInput2Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ImGui.NET" Version="1.90.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      Not compiled in. Client/ExileInput2Client.cs is the file a consuming plugin copies into its
+      own source, and it speaks only to the bridge - so it has no business being part of this
+      assembly, where it would just be dead code talking to itself.
+    -->
+    <Compile Remove="Client\**" />
+    <None Include="Client\**" />
+
+    <!--
+      The tests, likewise. They are a console program with a Main and they reference this project,
+      so compiling them into it would be both a circular reference and an entry point in a library.
+      The HUD builds whatever csproj it finds at the top of the plugin folder, which is this one.
+    -->
+    <Compile Remove="Tests\**" />
+    <None Include="Tests\**" />
+  </ItemGroup>
+
+</Project>
