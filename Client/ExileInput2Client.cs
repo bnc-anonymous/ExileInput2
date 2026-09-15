@@ -44,6 +44,10 @@ public sealed class ExileInput2Client
     private Func<string, bool> _release;
     private Func<string, RectangleF, bool, bool, bool> _moveTo;
     private Func<string, Vector2, bool, bool, bool> _moveToPoint;
+    private Func<string, Vector2, Vector2, bool> _drag;
+    private Func<string, bool> _dragging;
+    private Func<string, bool> _dragMissed;
+    private Func<string, string> _dragTrace;
     private Func<string, RectangleF, Keys[], bool> _moveToKeys;
     private Func<string, Vector2, Keys[], bool> _moveToPointKeys;
     private Func<string, bool> _arrived;
@@ -61,6 +65,12 @@ public sealed class ExileInput2Client
     private Func<string, string> _stopped;
 
     private bool _looked;
+
+    /// <summary>When the first lookup ran, and when the last retry did. See Look.</summary>
+    private DateTime _lookedAt;
+
+    private DateTime _tried;
+
 
     public ExileInput2Client(GameController gc, string name)
     {
@@ -87,8 +97,27 @@ public sealed class ExileInput2Client
     /// </summary>
     private void Look()
     {
-        if (_looked)
+        // **Looked up once was wrong, because the two plugins load and reload independently.**
+        //
+        // Whichever registers second is invisible to whoever bound first: reload the input plugin to
+        // pick up a new method and the consumer still holds a null for it, having latched its
+        // lookups at its own startup. The symptom is a feature that silently does nothing and a
+        // reload that does not fix it - the fix being to reload the OTHER plugin afterwards, which
+        // is a rule nobody should have to know.
+        //
+        // So a binding that came back empty is retried, slowly, for a while. Once everything asked
+        // for is in hand it latches as before and costs nothing; against an older input plugin that
+        // genuinely lacks a method, it gives up after a minute rather than asking for ever.
+        if (_looked && (_drag != null || DateTime.UtcNow - _lookedAt > TimeSpan.FromSeconds(60)))
             return;
+
+        if (_looked && DateTime.UtcNow - _tried < TimeSpan.FromSeconds(2))
+            return;
+
+        _tried = DateTime.UtcNow;
+
+        if (!_looked)
+            _lookedAt = DateTime.UtcNow;
 
         _looked = true;
 
@@ -103,6 +132,10 @@ public sealed class ExileInput2Client
             _release = b.GetMethod<Func<string, bool>>("ExileInput2.Release");
             _moveTo = b.GetMethod<Func<string, RectangleF, bool, bool, bool>>("ExileInput2.MoveTo");
             _moveToPoint = b.GetMethod<Func<string, Vector2, bool, bool, bool>>("ExileInput2.MoveToPoint");
+            _drag = b.GetMethod<Func<string, Vector2, Vector2, bool>>("ExileInput2.Drag");
+            _dragging = b.GetMethod<Func<string, bool>>("ExileInput2.Dragging");
+            _dragMissed = b.GetMethod<Func<string, bool>>("ExileInput2.DragMissed");
+            _dragTrace = b.GetMethod<Func<string, string>>("ExileInput2.DragTrace");
 
             // The modifier-set forms. Null against an older ExileInput2 that does not register
             // them, which is why every call below falls back to the ctrl/shift pair rather than
@@ -329,6 +362,46 @@ public sealed class ExileInput2Client
     }
 
     /// <summary>Presses and releases a key.</summary>
+    /// <summary>
+    /// Presses at one point, travels to another, and lets go there. See ExileInput2's Drag.
+    ///
+    /// One call rather than a press and a release to pair up, so nothing here can leave a button
+    /// held: the input plugin owns the gesture and puts it down on every way out, including this
+    /// plugin crashing or being reloaded mid-drag.
+    /// </summary>
+    public bool Drag(Vector2 from, Vector2 to)
+    {
+        Look();
+        return _drag?.Invoke(_me, from, to) ?? false;
+    }
+
+    /// <summary>
+    /// Whether this build of ExileInput2 offers a drag at all.
+    ///
+    /// The two plugins are loaded separately and reloaded separately, so a consumer can be newer
+    /// than the input it talks to - and a missing method looks exactly like a refused one from the
+    /// outside. Worth telling apart: one is fixed by reloading, the other is not.
+    /// </summary>
+    public bool CanDrag => _drag != null;
+
+    /// <summary>
+    /// Whether the last drag gave up because the thing under the cursor was not what was aimed at.
+    ///
+    /// The input plugin asks the game what the cursor is over before it presses, so a drag that
+    /// never happened is told apart from one that happened and achieved nothing.
+    /// </summary>
+    public bool DragMissed() => _dragMissed?.Invoke(_me) ?? false;
+
+    /// <summary>Where the cursor really was at each step of the last drag. See ExileInput2's Trace.</summary>
+    public string DragTrace() => _dragTrace?.Invoke(_me) ?? "not available";
+
+    /// <summary>Whether a drag is still in flight, so a caller can wait rather than guess.</summary>
+    public bool Dragging()
+    {
+        Look();
+        return _dragging?.Invoke(_me) ?? false;
+    }
+
     public bool Tap(Keys key)
     {
         Look();

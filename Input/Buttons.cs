@@ -153,6 +153,56 @@ internal static class Buttons
     ///
     /// Nothing here releases anything, because the caller decides when the modifier comes up.
     /// </summary>
+    /// <summary>
+    /// Puts a mouse button down and leaves it there, for a drag.
+    ///
+    /// **Press is a whole click and cannot be used for this.** It sends the down and the up in one
+    /// call, so a drag built on it pressed and released at the source and then moved the cursor with
+    /// nothing held - which is exactly what a drag is not. Held separately, and remembered, so
+    /// LetGo can put it up on any path out even where nothing knows a drag was running.
+    /// </summary>
+    public static void Hold(bool right)
+    {
+        if (right)
+        {
+            Input.RightDown();
+            _right = true;
+        }
+        else
+        {
+            Input.LeftDown();
+            _left = true;
+        }
+    }
+
+    /// <summary>
+    /// Lets go of whichever mouse button is being held, if any.
+    ///
+    /// Unconditional in the same spirit as the modifier release below it: a left button left down is
+    /// the worst thing this plugin can leave behind, so it comes up on every way out rather than
+    /// only where somebody remembered a drag was in progress.
+    /// </summary>
+    public static void LetGo()
+    {
+        if (_left)
+        {
+            Input.LeftUp();
+            _left = false;
+        }
+
+        if (_right)
+        {
+            Input.RightUp();
+            _right = false;
+        }
+    }
+
+    /// <summary>Whether a mouse button is being held right now. See Hold.</summary>
+    public static bool Holding => _left || _right;
+
+    private static bool _left;
+    private static bool _right;
+
     public static void Press(bool right)
     {
         if (right)
@@ -180,6 +230,11 @@ internal static class Buttons
     /// </summary>
     public static void Release()
     {
+        // The mouse button too, which this did not do and every caller assumed it did. Abandon, a
+        // stale lease and the plugin unloading all come through here; a drag running when any of
+        // those happens has to end with the button up. See Hold.
+        LetGo();
+
         var held = _holding;
         _holding = Modifier.None;
 

@@ -125,15 +125,51 @@ internal sealed class MousePointer
 
         var here = Where();
         var tolerance = (float)StopTolerancePx * StopTolerancePx;
+        var nearest = float.MaxValue;
+        var was = Vector2.Zero;
 
         for (var i = 0; i < _recentCount; i++)
         {
-            if (Vector2.DistanceSquared(here, _recent[i]) <= tolerance)
+            var gap = Vector2.DistanceSquared(here, _recent[i]);
+
+            if (gap <= tolerance)
                 return false;
+
+            if (gap >= nearest)
+                continue;
+
+            nearest = gap;
+            was = _recent[i];
         }
+
+        // Kept for the report, not for the decision.
+        //
+        // **"The mouse was moved" is a conclusion, and it is sometimes the wrong one.** The cursor
+        // being somewhere this pointer never put it is the only evidence there is, and a hand on the
+        // mouse is one explanation - the game warping the cursor when a panel opens is another, and
+        // the log said the same sentence for both. Observed: a click on the combinations button
+        // landed, the pointer set off for the reward it had chosen, and it stopped on the way with
+        // nobody touching anything.
+        //
+        // So the distance and the two positions go in the message. If the jump is tens of pixels in
+        // one tick and lands somewhere structural - a panel's middle, a screen edge - that is not a
+        // hand, and the fix is to know which before changing the rule that keeps the player in
+        // charge.
+        Departed = MathF.Sqrt(nearest);
+        LeftAt = was;
+        FoundAt = here;
 
         return true;
     }
+
+    /// <summary>How far the cursor was from anywhere this pointer left it, when it last stopped.</summary>
+    public float Departed { get; private set; }
+
+    /// <summary>The nearest place this pointer had put the cursor, when it last stopped.</summary>
+    public Vector2 LeftAt { get; private set; }
+
+    /// <summary>Where the cursor actually was, when it last stopped.</summary>
+    public Vector2 FoundAt { get; private set; }
 
     /// <summary>Whether an asked-for move has gone unconfirmed for longer than it should have.</summary>
     public bool Expired() =>

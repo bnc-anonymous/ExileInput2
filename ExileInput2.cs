@@ -98,6 +98,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.ClickKeys",
             (string who, Keys[] modifiers, bool right) => Click(who, modifiers, right));
 
+        b.SaveMethod("ExileInput2.Drag",
+            (string who, Vector2 from, Vector2 to) => Drag(who, from, to));
+        b.SaveMethod("ExileInput2.Dragging", (string who) => Dragging(who));
+        b.SaveMethod("ExileInput2.DragMissed", (string who) => Missed(who));
+        b.SaveMethod("ExileInput2.DragTrace", (string who) => Trace(who));
+
         b.SaveMethod("ExileInput2.Tap", (string who, Keys key) => Tap(who, key));
         b.SaveMethod("ExileInput2.Hold", (string who, Keys key) => Hold(who, key));
         b.SaveMethod("ExileInput2.Let", (string who, Keys key) => Let(who, key));
@@ -188,6 +194,21 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         pointer.TolerancePx = _tolerances.TryGetValue(who, out var px) ? px : Settings.TolerancePx.Value;
         pointer.StopTolerancePx = Settings.StopTolerancePx.Value;
         pointer.ArriveTimeoutMs = Settings.ArriveTimeoutMs.Value;
+
+        // **A drag is not a human-looking journey and must not be one.**
+        //
+        // The wander that makes a click look natural - a spread around the target, a fifteen per
+        // cent arc, twelve pixels of arrival tolerance - is fatal on a scroll bar twenty seven
+        // pixels wide: the press lands beside the thumb as often as on it, and the arc carries the
+        // cursor off the bar halfway through the pull. Straight, tight, and on the point, for as
+        // long as the drag lasts.
+        if (_drags.ContainsKey(who))
+        {
+            pointer.SpreadPercent = 0f;
+            pointer.ArcPercent = 0f;
+            pointer.TolerancePx = 2;
+        }
+
         return pointer;
     }
 
@@ -208,6 +229,192 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         pointer.Aim(rect, modifiers ?? Modifier.None);
         return true;
     }
+
+    /// <summary>
+    /// Presses at one point, travels to another, and lets go there.
+    ///
+    /// **One method rather than a press and a release the caller pairs up**, and that is the whole
+    /// safety argument. A consumer that could hold the button would eventually crash, hot reload or
+    /// simply forget between the two calls, and what it would leave behind is a left button held
+    /// down in a live game - the worst thing anything here can do. Owning the gesture means the
+    /// button is only ever down inside a tick loop that releases it on every way out: the player
+    /// touching the mouse, the window losing focus, the lease going stale, the plugin unloading.
+    ///
+    /// Written for a scroll bar, which is what a drag is actually needed for. The combinations
+    /// window shows a handful of a remnant's nineteen options and the one worth taking is routinely
+    /// out of sight; its thumb is the only way to bring it into view without a mouse wheel, which
+    /// this plugin has no way to send.
+    ///
+    /// The journey to each end is the ordinary one - the same wandering approach and the same
+    /// arrival check - so a drag looks like two moves with a button held between them rather than
+    /// like a machine dragging something.
+    /// </summary>
+    private bool Drag(string who, Vector2 from, Vector2 to)
+    {
+        if (!_lease.Held(who))
+            return false;
+
+        // Nothing clever if one is already running: a second drag from the same caller means the
+        // first is not going to finish, so it is dropped with its button.
+        if (_drags.ContainsKey(who))
+        {
+            Buttons.LetGo();
+            _drags.Remove(who);
+        }
+
+        PointerFor(who).Place(from, Modifier.None);
+        _missed[who] = false;
+        _drags[who] = (to, 0, DateTime.UtcNow);
+
+        return true;
+    }
+
+    /// <summary>Whether a drag is still in flight, so a caller can wait for it.</summary>
+    private bool Dragging(string who) => _drags.ContainsKey(who);
+
+    /// <summary>
+    /// The drag, advanced one tick: press on arrival at the first point, let go at the second.
+    /// </summary>
+    private void StepDrag(string who, MousePointer pointer)
+    {
+        if (!_drags.TryGetValue(who, out var drag))
+            return;
+
+        switch (drag.Phase)
+        {
+            // On the thumb - or somewhere else, which is worth finding out before pressing.
+            //
+            // **A press is a commitment and the coordinates are a belief.** Everything about where
+            // the thumb is came from reading rectangles out of the interface, and those have been
+            // wrong twice already in this window alone - once the whole track, once the panel. A
+            // press on the wrong thing is a click on the wrong thing, and in a rewards window that
+            // is a reward taken.
+            //
+            // So the game is asked what is under the cursor first. UIHover is its own answer rather
+            // than another rectangle of ours, and if what it names does not contain the point that
+            // was aimed at, nothing is pressed and the drag is abandoned for the caller to report.
+            //
+            // On the thumb. Press, and stay still for a moment.
+            //
+            // **A press and a move in the same instant is a click that happens to end elsewhere.**
+            // An interface decides a drag has begun by seeing the button go down and stay down while
+            // the cursor moves, and sending both in one tick gives it nothing to see. The dwell is
+            // what turns two events into a gesture.
+            case 0 when pointer.Arrived():
+                _trace[who] = $"arrived at ({Cursor().X:0},{Cursor().Y:0})";
+
+                if (!Under(pointer.Expected))
+                {
+                    _missed[who] = true;
+                    _drags.Remove(who);
+
+                    return;
+                }
+
+                Buttons.Hold(false);
+                _trace[who] += $", pressed at ({Cursor().X:0},{Cursor().Y:0})" +
+                               $" holding {Buttons.Holding}";
+                _drags[who] = (drag.To, 1, DateTime.UtcNow);
+
+                return;
+
+            case 1 when DateTime.UtcNow - drag.At >= TimeSpan.FromMilliseconds(DwellMs):
+                pointer.Place(drag.To, Modifier.None);
+                _trace[who] += $", set off from ({Cursor().X:0},{Cursor().Y:0}) " +
+                               $"for ({drag.To.X:0},{drag.To.Y:0})";
+                _drags[who] = (drag.To, 2, DateTime.UtcNow);
+
+                return;
+
+            // Arrived with the button still down. Hold again before letting go, so the drop lands
+            // where the drag ended rather than while it is still being read as movement.
+            case 2 when pointer.Arrived():
+                _trace[who] += $", got to ({Cursor().X:0},{Cursor().Y:0})";
+                _drags[who] = (drag.To, 3, DateTime.UtcNow);
+
+                return;
+
+            case 3 when DateTime.UtcNow - drag.At >= TimeSpan.FromMilliseconds(DwellMs):
+                Buttons.LetGo();
+                _trace[who] += $", let go at ({Cursor().X:0},{Cursor().Y:0})";
+                _drags.Remove(who);
+
+                return;
+        }
+    }
+
+    /// <summary>How long the button stays down before moving, and before coming up. See StepDrag.</summary>
+    private const int DwellMs = 90;
+
+    /// <summary>
+    /// Whether the game says the thing under the cursor covers the point that was aimed at.
+    ///
+    /// Its answer, not ours - the whole value of the check is that it does not come from the same
+    /// reading of the interface that produced the aim in the first place.
+    /// </summary>
+    private bool Under(Vector2 point)
+    {
+        var hover = GameController?.IngameState?.UIHover;
+
+        try
+        {
+            // **Nothing under the cursor is a pass, not a failure, and that is the game's doing.**
+            //
+            // The check began as "the hover must name something covering the point" - the strongest
+            // form, and one a scroll bar cannot satisfy: parked on the thumb, UIHover reads no
+            // address at all. The game simply does not report bars the way it reports rewards and
+            // buttons, so the strict rule refuses every drag there and always would.
+            //
+            // Inverted, it still does the job it was written for. What it exists to prevent is a
+            // press landing on something ELSE - a reward option, a button - and those do report,
+            // with a rectangle that will not contain the point being aimed at. So a named element
+            // that does not cover the aim is a refusal, and silence is consent.
+            if (hover == null || hover.Address == 0)
+                return true;
+
+            var at = hover.GetClientRectCache;
+
+            if (at.Width <= 0f || at.Height <= 0f)
+                return true;
+
+            return point.X >= at.Left && point.X <= at.Right &&
+                   point.Y >= at.Top && point.Y <= at.Bottom;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Whether the last drag was abandoned because the cursor was not on the target.</summary>
+    private bool Missed(string who) => _missed.TryGetValue(who, out var missed) && missed;
+
+    /// <summary>
+    /// Where the cursor actually was at each step of the last drag.
+    ///
+    /// **Six complete drags moved nothing, and everything about them was inferred.** The press was
+    /// believed to land on the thumb, the travel was believed to happen while the button was down,
+    /// and the release was believed to be thirty pixels lower - none of it observed. The cursor's
+    /// real position at each step says which of those is not true: a release at the same point as
+    /// the press means the travel never happened while held, and a press somewhere other than the
+    /// aim means the move before it did not finish.
+    /// </summary>
+    private string Trace(string who) => _trace.TryGetValue(who, out var text) ? text : "no drag yet";
+
+    private readonly Dictionary<string, string> _trace = new();
+
+    /// <summary>Where the operating system says the cursor is, which is the only unarguable answer.</summary>
+    private Vector2 Cursor()
+    {
+        var at = GameController?.IngameState;
+
+        return at == null ? Vector2.Zero : new Vector2(at.MousePosX, at.MousePosY);
+    }
+
+    private readonly Dictionary<string, bool> _missed = new();
+
+    /// <summary>What each caller is dragging, if anything. See Drag.</summary>
+    private readonly Dictionary<string, (Vector2 To, int Phase, DateTime At)> _drags = new();
 
     private bool MoveTo(string who, Vector2 client, Keys[] modifiers)
     {
@@ -423,6 +630,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                 // modifier held around a click comes up here, a frame or four after it went down,
                 // rather than by stopping the overlay until it was time.
                 StrokeFor(driving).Step();
+
+                // And the drag, which is a press with a journey inside it. See Drag.
+                StepDrag(driving, pointer);
             }
         }
 
@@ -437,6 +647,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             StrokeFor(_held).Abandon();
             KeysFor(_held).ReleaseAll();
             Buttons.Release();
+            _drags.Remove(_held);
             _held = null;
         }
         else if (_lease.Holder != null)
@@ -456,10 +667,18 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         StrokeFor(who).Abandon();
         KeysFor(who).ReleaseAll();
         Buttons.Release();
+        _drags.Remove(who);
         _lease.Release(who);
         _held = null;
 
-        LogMessage($"ExileInput2: {who} stopped, {Describe(reason)}.");
+        var pointer = PointerFor(who);
+
+        LogMessage($"ExileInput2: {who} stopped, {Describe(reason)}." +
+                   (reason == StopReason.PlayerMovedTheMouse && pointer.Departed > 0f
+                       ? $" The cursor was {pointer.Departed:0} px from anywhere it had been put - " +
+                         $"last left at ({pointer.LeftAt.X:0},{pointer.LeftAt.Y:0}), found at " +
+                         $"({pointer.FoundAt.X:0},{pointer.FoundAt.Y:0})."
+                       : ""));
     }
 
     private static string Describe(StopReason reason) => reason switch
