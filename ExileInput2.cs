@@ -476,9 +476,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     private readonly Dictionary<string, int> _tolerances = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Sets this caller's Shortest Move in place of the menu's, in milliseconds: the least time a move takes however
-    /// near the target, so it slows moves between neighbouring targets and leaves long ones as they are. Kept per caller
-    /// until changed, as a tolerance is; a negative value goes back to the menu's. Refused without the lease or above
+    /// Sets this caller's Shortest Move in place of the menu's, in milliseconds. Travel adds it to every move's time, near
+    /// or far, so a caller sets it for the moves it is meant for. Kept per caller until changed, as a tolerance is; a
+    /// negative value goes back to the menu's. Refused without the lease or above
     /// 1000.
     /// </summary>
     private bool SetShortestMove(string who, int ms)
