@@ -106,6 +106,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // that suits an inventory cell, and a single figure would be wrong for one of them - so the
         // setting is the default and a caller that knows better says so.
         b.SaveMethod("ExileInput2.SetTolerance", (string who, int px) => SetTolerance(who, px));
+        b.SaveMethod("ExileInput2.SetSpeed", (string who, int percent) => SetSpeed(who, percent));
 
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
@@ -202,8 +203,11 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // The feel settings as the seed moves them; the rest as set. See ExileInput2Settings.Varied.
         pointer.SpreadPercent = Settings.UsedSpreadPercent;
-        pointer.MinTravelMs = Settings.UsedMinTravelMs;
-        pointer.TravelMsPerRootPx = Settings.UsedTravelMsPerRootPx;
+        // A caller's own speed scales the journey's time: 50 per cent takes twice as long. See SetSpeed.
+        var speed = _speeds.TryGetValue(who, out var percent) ? percent / 100f : 1f;
+
+        pointer.MinTravelMs = Settings.UsedMinTravelMs / speed;
+        pointer.TravelMsPerRootPx = Settings.UsedTravelMsPerRootPx / speed;
         pointer.ArcPercent = Settings.UsedArcPercent;
         pointer.StayPut = Settings.StayPut.Value;
         pointer.OnModifier ??= key => KeysFor(who).Hold(key);
@@ -469,6 +473,22 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
     /// <summary>What each caller asked for, since the shared default cannot suit every target.</summary>
     private readonly Dictionary<string, int> _tolerances = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sets how fast this caller's journeys are, as a percentage of the feel settings: 100 as set, 50 twice as long, 200
+    /// half as long. Kept per caller until changed, as a tolerance is. Refused without the lease or outside 10 to 400.
+    /// </summary>
+    private bool SetSpeed(string who, int percent)
+    {
+        if (!_lease.Held(who) || percent is < 10 or > 400)
+            return false;
+
+        _speeds[who] = percent;
+        return true;
+    }
+
+    /// <summary>Each caller's journey speed in per cent, where one was asked for. See SetSpeed.</summary>
+    private readonly Dictionary<string, int> _speeds = new(StringComparer.OrdinalIgnoreCase);
 
     private bool Click(string who, Keys[] modifiers, bool right)
     {

@@ -62,6 +62,7 @@ public sealed class ExileInput2Client
     private Func<string, Vector2> _expected;
     private Func<string, bool> _forget;
     private Func<string, int, bool> _setTolerance;
+    private Func<string, int, bool> _setSpeed;
     private Func<string, string> _stopped;
 
     private bool _looked;
@@ -155,6 +156,7 @@ public sealed class ExileInput2Client
             _expected = b.GetMethod<Func<string, Vector2>>("ExileInput2.Expected");
             _forget = b.GetMethod<Func<string, bool>>("ExileInput2.Forget");
             _setTolerance = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetTolerance");
+            _setSpeed = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetSpeed");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
         }
         catch
@@ -359,6 +361,17 @@ public sealed class ExileInput2Client
     {
         Look();
         return _setTolerance?.Invoke(_me, px) ?? false;
+    }
+
+    /// <summary>
+    /// How fast this caller's moves are, as a percentage of ExileInput2's Shortest Move and Move Time Per Root Pixel:
+    /// 100 as set, 50 twice as long, 200 half as long; 10 to 400. Kept until changed, so set it back when done. Needs
+    /// the cursor taken. False from an ExileInput2 too old to have it.
+    /// </summary>
+    public bool SetSpeed(int percent)
+    {
+        Look();
+        return _setSpeed?.Invoke(_me, percent) ?? false;
     }
 
     /// <summary>Presses and releases a key.</summary>
