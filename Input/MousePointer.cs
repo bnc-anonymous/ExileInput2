@@ -33,6 +33,11 @@ internal sealed class MousePointer
     {
         _gc = gc;
         _rng = rng ?? new Random();
+
+        // Each pointer starts somewhere of its own along the noise, so two sessions do not open with the same moves.
+        // From the generator handed in, so a test's seeded generator still gives it the same start every run.
+        _drift = (float)(_rng.NextDouble() * 256d);
+        _journey = (float)(_rng.NextDouble() * 256d);
     }
 
     /// <summary>

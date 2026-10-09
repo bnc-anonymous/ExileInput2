@@ -62,7 +62,48 @@ internal static class PerlinNoise
         return ((hash & 1) == 0 ? x : -x) + ((hash & 2) == 0 ? y : -y);
     }
 
-    private static readonly int[] Permutation = Doubled(
+    /// <summary>
+    /// The noise's table: Perlin's own until UseSeed shuffles it. Every install drew the same wander, bow and timing from
+    /// the one fixed table; a seeded shuffle gives each install its own.
+    /// </summary>
+    private static int[] Permutation;
+
+    /// <summary>
+    /// Set here and not beside its declaration: static fields are set in the order they are written, and Original comes
+    /// after it, so an initialiser there read Original before it existed.
+    /// </summary>
+    static PerlinNoise() => Permutation = Doubled(Original);
+
+    /// <summary>
+    /// Shuffles the table by this seed, the same seed always giving the same table. Nought keeps Perlin's own, which is
+    /// what the tests are written against.
+    /// </summary>
+    public static void UseSeed(int seed)
+    {
+        if (seed == 0)
+        {
+            Permutation = Doubled(Original);
+            return;
+        }
+
+        var table = new int[256];
+        var shuffle = new Random(seed);
+
+        for (var i = 0; i < table.Length; i++)
+            table[i] = i;
+
+        for (var i = table.Length - 1; i > 0; i--)
+        {
+            var j = shuffle.Next(i + 1);
+
+            (table[i], table[j]) = (table[j], table[i]);
+        }
+
+        Permutation = Doubled(table);
+    }
+
+    /// <summary>Ken Perlin's reference permutation.</summary>
+    private static readonly int[] Original =
     [
         151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30,
         69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94,
@@ -77,7 +118,7 @@ internal static class PerlinNoise
         242, 193, 238, 210, 144, 12, 191, 179, 162, 241, 81, 51, 145, 235, 249, 14, 239, 107, 49,
         192, 214, 31, 181, 199, 106, 157, 184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254,
         138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180,
-    ]);
+    ];
 
     /// <summary>
     /// The table laid end to end with itself.

@@ -92,4 +92,12 @@ public class ExileInput2Settings : ISettings
         "Long enough never to expire mid-gesture: a move waits on the game and a click waits on a " +
         "confirmation, and both are far under a second.")]
     public RangeNode<int> ClaimExpirySeconds { get; set; } = new RangeNode<int>(5, 1, 60);
+
+    /// <summary>
+    /// This install's own seed for the noise every journey is shaped by - where the aim wanders, how a path bows, when a
+    /// modifier goes down. Nought until the plugin first starts, which draws one at random and saves it, so each install
+    /// keeps one habit of its own across sessions rather than every install sharing the same one. Not shown in the
+    /// menu: there is nothing to choose about it.
+    /// </summary>
+    public int Seed { get; set; }
 }

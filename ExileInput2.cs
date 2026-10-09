@@ -48,6 +48,16 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         AppDomain.CurrentDomain.ProcessExit += LetGoOfEverything;
         AppDomain.CurrentDomain.UnhandledException += LetGoOfEverything;
 
+        // This install's seed, drawn the first time and saved at once, so a crash before the next save does not draw
+        // another. See ExileInput2Settings.Seed.
+        if (Settings.Seed == 0)
+        {
+            Settings.Seed = System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue);
+            _SaveSettings();
+        }
+
+        PerlinNoise.UseSeed(Settings.Seed);
+
         var b = GameController.PluginBridge;
 
         // Claiming. Take is safe to call every tick rather than once, so a caller need not keep a
