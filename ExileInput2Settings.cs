@@ -1,11 +1,16 @@
 using ExileCore2.Shared.Attributes;
 using ExileCore2.Shared.Interfaces;
 using ExileCore2.Shared.Nodes;
+using Newtonsoft.Json;
 
 namespace ExileInput2;
 
 public class ExileInput2Settings : ISettings
 {
+    public ExileInput2Settings()
+    {
+        SeedUi = new CustomNode(DrawSeed);
+    }
     public ToggleNode Enable { get; set; } = new ToggleNode(true);
 
     [Menu("Aim Within (%)",
@@ -96,8 +101,36 @@ public class ExileInput2Settings : ISettings
     /// <summary>
     /// This install's own seed for the noise every journey is shaped by - where the aim wanders, how a path bows, when a
     /// modifier goes down. Nought until the plugin first starts, which draws one at random and saves it, so each install
-    /// keeps one habit of its own across sessions rather than every install sharing the same one. Not shown in the
-    /// menu: there is nothing to choose about it.
+    /// keeps one habit of its own across sessions rather than every install sharing the same one. Shown and edited by
+    /// SeedUi; a change takes effect on the next tick, and nought draws a new one.
     /// </summary>
     public int Seed { get; set; }
+
+    /// <summary>The seed in the menu: a box to read or type it in, and a button for a new one at random.</summary>
+    [JsonIgnore]
+    [Menu("Seed",
+        "This install's own seed for the noise that shapes every move: where the aim\n" +
+        "wanders, how a path bows, when a modifier goes down. The same seed keeps the\n" +
+        "same habit across sessions. Drawn at random the first time the plugin starts.\n\n" +
+        "Type a number to use it, or press New seed for another at random. Nought draws\n" +
+        "a new one.")]
+    public CustomNode SeedUi { get; set; }
+
+    private void DrawSeed()
+    {
+        var seed = Seed;
+
+        ImGuiNET.ImGui.SetNextItemWidth(160f);
+
+        if (ImGuiNET.ImGui.InputInt("Seed##exileInput2Seed", ref seed, 0, 0))
+            Seed = seed;
+
+        ImGuiNET.ImGui.SameLine();
+
+        if (ImGuiNET.ImGui.Button("New seed##exileInput2NewSeed"))
+            Seed = NewSeed();
+    }
+
+    /// <summary>A seed at random: a cryptographic draw, never nought, which keeps Perlin's own table.</summary>
+    internal static int NewSeed() => System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue);
 }

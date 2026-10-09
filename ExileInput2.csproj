@@ -37,6 +37,8 @@
 
   <ItemGroup>
     <PackageReference Include="ImGui.NET" Version="1.90.0.1" />
+    <!-- For [JsonIgnore] on the settings' drawn-only nodes. The same version AutoExpedition builds against. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
   <ItemGroup>
     <!--

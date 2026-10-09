@@ -33,6 +33,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     private readonly Dictionary<string, HeldKeys> _keys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Stroke> _strokes = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The seed the noise is shuffled by now. See Tick.</summary>
+    private int _seedInUse;
+
     public override bool Initialise()
     {
         // The last resort, for the ways out that never reach OnUnload.
@@ -52,11 +55,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // another. See ExileInput2Settings.Seed.
         if (Settings.Seed == 0)
         {
-            Settings.Seed = System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue);
+            Settings.Seed = ExileInput2Settings.NewSeed();
             _SaveSettings();
         }
 
         PerlinNoise.UseSeed(Settings.Seed);
+        _seedInUse = Settings.Seed;
 
         var b = GameController.PluginBridge;
 
@@ -615,6 +619,16 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     public override void Tick()
     {
         _lease.Expiry = TimeSpan.FromSeconds(Settings.ClaimExpirySeconds.Value);
+
+        // The seed changed in the menu: nought draws a new one, anything else is used as it is. See ExileInput2Settings.Seed.
+        if (Settings.Seed != _seedInUse)
+        {
+            if (Settings.Seed == 0)
+                Settings.Seed = ExileInput2Settings.NewSeed();
+
+            PerlinNoise.UseSeed(Settings.Seed);
+            _seedInUse = Settings.Seed;
+        }
 
         // The journey, advanced for whoever holds the cursor. One place doing this is the reason
         // the plugin exists rather than a library: a passive helper would need every consumer to
