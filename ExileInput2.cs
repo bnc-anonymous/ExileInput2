@@ -53,9 +53,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // This install's seed, drawn the first time and saved at once, so a crash before the next save does not draw
         // another. See ExileInput2Settings.Seed.
-        if (Settings.Seed == 0)
+        if (!Settings.SeedDrawn)
         {
             Settings.Seed = ExileInput2Settings.NewSeed();
+            Settings.SeedDrawn = true;
             _SaveSettings();
         }
 
@@ -199,10 +200,11 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (!_pointers.TryGetValue(who, out var pointer))
             _pointers[who] = pointer = new MousePointer(GameController);
 
-        pointer.SpreadPercent = Settings.SpreadPercent.Value;
-        pointer.MinTravelMs = Settings.MinTravelMs.Value;
-        pointer.TravelMsPerRootPx = Settings.TravelMsPerRootPx.Value;
-        pointer.ArcPercent = Settings.ArcPercent.Value;
+        // The feel settings as the seed moves them; the rest as set. See ExileInput2Settings.Varied.
+        pointer.SpreadPercent = Settings.UsedSpreadPercent;
+        pointer.MinTravelMs = Settings.UsedMinTravelMs;
+        pointer.TravelMsPerRootPx = Settings.UsedTravelMsPerRootPx;
+        pointer.ArcPercent = Settings.UsedArcPercent;
         pointer.StayPut = Settings.StayPut.Value;
         pointer.OnModifier ??= key => KeysFor(who).Hold(key);
         pointer.TolerancePx = _tolerances.TryGetValue(who, out var px) ? px : Settings.TolerancePx.Value;
@@ -492,7 +494,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // So it fails closed now. Anything short of "the key is down and we can see it" goes the
         // long way, which confirms or refuses rather than assuming.
         var stroke = StrokeFor(who);
-        stroke.HoldMs = Settings.ModifierHoldMs.Value;
+        stroke.HoldMs = Settings.UsedModifierHoldMs;
 
         if (Gesture.StraightIn(modifiers, pointer.ModifiersReady, Buttons.IsDown))
             return Pressed(pointer, stroke.StraightIn(right));
@@ -620,12 +622,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     {
         _lease.Expiry = TimeSpan.FromSeconds(Settings.ClaimExpirySeconds.Value);
 
-        // The seed changed in the menu: nought draws a new one, anything else is used as it is. See ExileInput2Settings.Seed.
+        // The seed changed in the menu. See ExileInput2Settings.Seed.
         if (Settings.Seed != _seedInUse)
         {
-            if (Settings.Seed == 0)
-                Settings.Seed = ExileInput2Settings.NewSeed();
-
             PerlinNoise.UseSeed(Settings.Seed);
             _seedInUse = Settings.Seed;
         }
