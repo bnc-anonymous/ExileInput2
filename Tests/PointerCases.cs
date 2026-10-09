@@ -139,6 +139,7 @@ internal static class PointerCases
                      && MousePointer.Holds(Row, landed)
                      && (c.AcceptsAtMost == null || pointer.Accepts <= c.AcceptsAtMost.Value + 0.01f)
                      && (!c.Modifier || pressed.Count == 1)
+                     && pointer.ModifiersReady == c.Modifier
                      && pointer.Arrived();
 
             if (!ok)
@@ -155,6 +156,11 @@ internal static class PointerCases
             if (c.Modifier)
                 wants.Add("the modifier pressed");
 
+            // **A journey with nothing to press has pressed nothing.** ModifiersReady is what the click asks before
+            // letting go of the caller's held keys, and it read true after every journey - so a plain click let go of a
+            // shift the caller was holding to keep a currency on the cursor, and picked the item up instead.
+            wants.Add(c.Modifier ? "the journey counted as having pressed it" : "the journey counted as having pressed nothing");
+
             Console.WriteLine($"{(ok ? "  ok  " : "FAIL  ")}{c.Name}");
             Console.WriteLine($"        given the cursor at ({c.From.X:0},{c.From.Y:0}), a " +
                               $"{Row.Width:0}x{Row.Height:0} row at ({Row.Left:0},{Row.Top:0}), " +
@@ -162,7 +168,7 @@ internal static class PointerCases
             Console.WriteLine($"        want  {string.Join(", ", wants)}");
             Console.WriteLine($"        got   {(moved ? $"{sent.Count} steps to ({landed.X:0},{landed.Y:0})" : "no movement")}, " +
                               $"tolerance {pointer.Accepts:0.##}px, " +
-                              $"{pressed.Count} modifier(s) pressed, " +
+                              $"{pressed.Count} modifier(s) pressed, ModifiersReady {pointer.ModifiersReady}, " +
                               $"{(MousePointer.Holds(Row, landed) ? "on the row" : "OFF THE ROW")}");
             Console.WriteLine($"        why   {c.Reason}");
             Console.WriteLine();

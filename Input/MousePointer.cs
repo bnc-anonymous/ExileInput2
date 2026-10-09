@@ -524,9 +524,17 @@ internal sealed class MousePointer
             _travel = null;
     }
 
+    /// <summary>
+    /// Presses the journey's modifiers, and records that it did - only when there were any.
+    ///
+    /// The record is what a click asks before letting go of the caller's held keys (Gesture.ReleaseBeforePush), and it
+    /// used to be set whether or not there was anything to press. Every journey then read as having pressed a modifier,
+    /// so a plain click after any move let go of a shift the caller was holding to keep a currency on the cursor - and
+    /// the bare click that followed picked the item up instead of applying the currency to it.
+    /// </summary>
     private void PressModifiers()
     {
-        _modifiersDown = true;
+        _modifiersDown = _modifiers.Length > 0;
 
         foreach (var key in _modifiers)
             OnModifier?.Invoke(key);
