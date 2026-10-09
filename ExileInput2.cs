@@ -106,7 +106,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // that suits an inventory cell, and a single figure would be wrong for one of them - so the
         // setting is the default and a caller that knows better says so.
         b.SaveMethod("ExileInput2.SetTolerance", (string who, int px) => SetTolerance(who, px));
-        b.SaveMethod("ExileInput2.SetSpeed", (string who, int percent) => SetSpeed(who, percent));
+        b.SaveMethod("ExileInput2.SetShortestMove", (string who, int ms) => SetShortestMove(who, ms));
 
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
@@ -203,11 +203,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // The feel settings as the seed moves them; the rest as set. See ExileInput2Settings.Varied.
         pointer.SpreadPercent = Settings.UsedSpreadPercent;
-        // A caller's own speed scales the journey's time: 50 per cent takes twice as long. See SetSpeed.
-        var speed = _speeds.TryGetValue(who, out var percent) ? percent / 100f : 1f;
-
-        pointer.MinTravelMs = Settings.UsedMinTravelMs / speed;
-        pointer.TravelMsPerRootPx = Settings.UsedTravelMsPerRootPx / speed;
+        // A caller's own shortest move in place of the menu's, where it asked for one, moved by the seed as the menu's
+        // is. See SetShortestMove.
+        pointer.MinTravelMs = _shortestMoves.TryGetValue(who, out var shortest)
+            ? shortest * ExileInput2Settings.SeedFactor(Settings.Seed, 1)
+            : Settings.UsedMinTravelMs;
+        pointer.TravelMsPerRootPx = Settings.UsedTravelMsPerRootPx;
         pointer.ArcPercent = Settings.UsedArcPercent;
         pointer.StayPut = Settings.StayPut.Value;
         pointer.OnModifier ??= key => KeysFor(who).Hold(key);
@@ -475,20 +476,26 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     private readonly Dictionary<string, int> _tolerances = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Sets how fast this caller's journeys are, as a percentage of the feel settings: 100 as set, 50 twice as long, 200
-    /// half as long. Kept per caller until changed, as a tolerance is. Refused without the lease or outside 10 to 400.
+    /// Sets this caller's Shortest Move in place of the menu's, in milliseconds: the least time a move takes however
+    /// near the target, so it slows moves between neighbouring targets and leaves long ones as they are. Kept per caller
+    /// until changed, as a tolerance is; a negative value goes back to the menu's. Refused without the lease or above
+    /// 1000.
     /// </summary>
-    private bool SetSpeed(string who, int percent)
+    private bool SetShortestMove(string who, int ms)
     {
-        if (!_lease.Held(who) || percent is < 10 or > 400)
+        if (!_lease.Held(who) || ms > 1000)
             return false;
 
-        _speeds[who] = percent;
+        if (ms < 0)
+            _shortestMoves.Remove(who);
+        else
+            _shortestMoves[who] = ms;
+
         return true;
     }
 
-    /// <summary>Each caller's journey speed in per cent, where one was asked for. See SetSpeed.</summary>
-    private readonly Dictionary<string, int> _speeds = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Each caller's own Shortest Move in milliseconds, where one was asked for. See SetShortestMove.</summary>
+    private readonly Dictionary<string, int> _shortestMoves = new(StringComparer.OrdinalIgnoreCase);
 
     private bool Click(string who, Keys[] modifiers, bool right)
     {
