@@ -20,6 +20,12 @@ internal sealed record TravelCase(string Name, float Distance, float Arc, string
 
     /// <summary>Whether the first tenth of the time must cover less than a tenth of the way.</summary>
     public bool WantEased { get; init; }
+
+    /// <summary>Whether one journey's duration should differ from the next one's, the same distance apart.</summary>
+    public bool WantVaried { get; init; }
+
+    /// <summary>Whether the first half of the time should cover more than half the way: slower into the target than away.</summary>
+    public bool WantFrontLoaded { get; init; }
 }
 
 /// <summary>
@@ -122,6 +128,22 @@ internal static class TravelCases
             WantBowed = true,
         },
 
+        new("10 One journey does not take exactly as long as the last", 500f, 15f,
+            "a hand repeating a reach does not repeat its timing to the millisecond. With every hop " +
+            "between neighbouring tablets the same length and the same duration, a run of currency uses " +
+            "had the beat of a metronome. The duration wanders with the noise, as the bow does")
+        {
+            WantVaried = true,
+        },
+
+        new("11 Slower into the target than away from it", 500f, 15f,
+            "a reach speeds up quickly and spends longer homing in. Smoothstep is symmetric, the same " +
+            "acceleration away as deceleration in, and every hop arrived with the same even settle")
+        {
+            WantFrontLoaded = true,
+            WantEased = true,
+        },
+
         new("7  Nought per root pixel teleports, deliberately", 500f, 15f,
             "the escape hatch, and the behaviour every machine had before any of this existed. It " +
             "is checked here so that turning it on is a supported answer rather than a setting " +
@@ -151,6 +173,8 @@ internal static class TravelCases
             var bowed = false;
             var eased = true;
             var ms = 0f;
+            var durations = new List<float>();
+            var halfWay = 1f;
             var worstOff = 0f;
             var drift = 0f;
 
@@ -161,6 +185,8 @@ internal static class TravelCases
 
                 var travel = new Travel(from, to, c.MinMs, c.MsPerRootPx, c.Arc, drift);
                 ms = travel.Ms;
+                durations.Add(ms);
+                halfWay = Math.Min(halfWay, (travel.At(0.5f).X - from.X) / Math.Max(1f, c.Distance));
 
                 if (Vector2.Distance(travel.At(0f), from) > 0.001f)
                     startsExact = false;
@@ -188,8 +214,18 @@ internal static class TravelCases
                     eased = false;
             }
 
+            // A duration is the distance's own give or take the journey's spread, never further. See Travel.DurationSpread.
+            var shortest = durations.Min();
+            var longest = durations.Max();
+            var within = c.WantMs == null || durations.All(x =>
+                x >= c.WantMs.Value * (1f - Travel.DurationSpread) - 0.5f && x <= c.WantMs.Value * (1f + Travel.DurationSpread) + 0.5f);
+            var varied = longest - shortest >= 0.1f * durations.Average() && Steps(durations) >= 0.01f * durations.Average();
+            var frontLoaded = halfWay > 0.55f;
+
             var ok = startsExact && endsExact
-                     && (c.WantMs == null || Math.Abs(ms - c.WantMs.Value) < 0.5f)
+                     && within
+                     && (!c.WantVaried || varied)
+                     && (!c.WantFrontLoaded || frontLoaded)
                      && (c.WantBowed == null || bowed == c.WantBowed.Value)
                      && (!c.WantEased || eased);
 
@@ -199,7 +235,11 @@ internal static class TravelCases
             var wants = new List<string> { "both ends exact" };
 
             if (c.WantMs != null)
-                wants.Add($"{c.WantMs:0}ms");
+                wants.Add($"{c.WantMs:0}ms, give or take {Travel.DurationSpread * 100f:0}%");
+            if (c.WantVaried)
+                wants.Add("durations differing journey to journey by 10% or more overall");
+            if (c.WantFrontLoaded)
+                wants.Add("over half the way covered in half the time");
             if (c.WantBowed == true)
                 wants.Add("a bowed path");
             if (c.WantBowed == false)
@@ -211,7 +251,7 @@ internal static class TravelCases
             Console.WriteLine($"        given {c.Distance:n0}px, bow {c.Arc:0}%, " +
                               $"{c.MinMs:0}ms floor + {c.MsPerRootPx:0}ms per root px");
             Console.WriteLine($"        want  {string.Join("; ", wants)}");
-            Console.WriteLine($"        got   {ms:0}ms, straying up to {worstOff:0.#}px off the " +
+            Console.WriteLine($"        got   {shortest:0}-{longest:0}ms, {halfWay * 100f:0}% of the way at half time, straying up to {worstOff:0.#}px off the " +
                               $"straight line over {Journeys} journeys, " +
                               $"{(startsExact && endsExact ? "both ends exact" : "AN END ADRIFT")}" +
                               $"{(eased ? "" : ", NOT EASED")}");

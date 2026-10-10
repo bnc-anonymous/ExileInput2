@@ -62,7 +62,11 @@ internal sealed class Travel
         var line = to - from;
         var distance = line.Length();
 
-        _ms = Math.Max(1f, minMs + (float)Math.Sqrt(distance) * msPerRootPx);
+        // Give or take DurationSpread, from the noise: a run of equal hops otherwise kept the beat of a metronome. Sampled
+        // faster than the bow so neighbouring journeys differ, and well away from it so a longer journey is not always a
+        // more bowed one.
+        _ms = Math.Max(1f, (minMs + (float)Math.Sqrt(distance) * msPerRootPx) *
+                           (1f + DurationSpread * PerlinNoise.Full(drift * 2.5f + 2048f, 0.5f)));
 
         // Perpendicular to the line, a fraction of its length, to one side or the other. Scaled by
         // the distance rather than fixed, or a short hop would bow as far as a long sweep and look
@@ -81,6 +85,17 @@ internal sealed class Travel
             _bow = perpendicular * reach * PerlinNoise.Full(drift, 0f);
         }
     }
+
+    /// <summary>How far a journey's duration may stray either way from its distance's own, as a fraction. Chosen.</summary>
+    internal const float DurationSpread = 0.15f;
+
+    /// <summary>
+    /// The power the journey's time is raised to before the easing, under one: the first half of the time covers more
+    /// than half the way, and the slowing into the target takes longer than the speeding away. 0.85 puts about 58% of
+    /// the way at half time and the peak speed at about four tenths of it. Chosen, as a hand's reach is commonly
+    /// described, not measured.
+    /// </summary>
+    internal const float ApproachSkew = 0.85f;
 
     /// <summary>How long this journey was given, in milliseconds.</summary>
     public float Ms => _ms;
@@ -107,8 +122,10 @@ internal sealed class Travel
     {
         t = Math.Clamp(t, 0f, 1f);
 
-        // Smoothstep: still at both ends, quickest in the middle.
-        var eased = t * t * (3f - 2f * t);
+        // Smoothstep over skewed time: still at both ends, quickest before the middle, slowest into the target. See
+        // ApproachSkew.
+        var u = MathF.Pow(t, ApproachSkew);
+        var eased = u * u * (3f - 2f * u);
 
         // A quadratic bezier through a control point off the midpoint, which is the cheapest curve
         // that starts and ends exactly where it must. The bow is doubled because a bezier only
