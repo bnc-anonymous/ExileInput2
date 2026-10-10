@@ -112,6 +112,19 @@ internal sealed class MousePointer
     /// </summary>
     private const int RecentSendsAtLeast = 12;
 
+    /// <summary>How far back sends are kept for StopDetail only, never for the decision.</summary>
+    private static readonly TimeSpan ReportedFor = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// What the last stop saw, in one line, for a caller to record: for a hand on the mouse, where the cursor was last put
+    /// and how long ago, where it was found and how far off, and whether this pointer itself sent it there in the last
+    /// ReportedFor - which would make it the game's report lagging, not a hand; for a move that never landed, where it
+    /// was sent, where the game read it, and how near it had to be. Empty before any stop. Never drawn: a caller asks
+    /// for it. False stops right after an explosive opened the reward window were reported on 2026-10-10 and 11 with
+    /// nothing kept to say which they were.
+    /// </summary>
+    public string StopDetail { get; private set; } = "";
+
     /// <summary>When the outstanding move was asked for, for the timeout.</summary>
     private TimeSpan _placedAt;
 
@@ -125,7 +138,7 @@ internal sealed class MousePointer
 
         var stale = 0;
 
-        while (stale < _recent.Count - RecentSendsAtLeast && now - _recent[stale].At > RecentFor)
+        while (stale < _recent.Count - RecentSendsAtLeast && now - _recent[stale].At > ReportedFor)
             stale++;
 
         _recent.RemoveRange(0, stale);
@@ -144,18 +157,55 @@ internal sealed class MousePointer
             return false;
 
         var here = Where();
+        var now = Now();
         var tolerance = (float)StopTolerancePx * StopTolerancePx;
+        var counted = Math.Max(0, _recent.Count - RecentSendsAtLeast);
+        var nearest = float.MaxValue;
+        var nearestAt = TimeSpan.Zero;
+        var was = Vector2.Zero;
 
-        // Every send kept counts: those within RecentFor, and always the last RecentSendsAtLeast. See Remember.
+        // The sends that count: those within RecentFor, and always the last RecentSendsAtLeast. Older ones are kept for
+        // StopDetail only. See Remember.
         //
         // **"The mouse was moved" is a conclusion, and it is sometimes the wrong one.** The cursor being somewhere
         // this pointer never put it is the only evidence there is. A hand on the mouse is one explanation; the game's
         // report lagging past RecentFor is another, which is what RecentFor's length is for.
-        foreach (var (point, _) in _recent)
+        for (var i = 0; i < _recent.Count; i++)
         {
-            if (Vector2.DistanceSquared(here, point) <= tolerance)
+            var (point, at) = _recent[i];
+
+            if (i < counted && now - at > RecentFor)
+                continue;
+
+            var gap = Vector2.DistanceSquared(here, point);
+
+            if (gap <= tolerance)
                 return false;
+
+            if (gap < nearest)
+            {
+                nearest = gap;
+                nearestAt = at;
+                was = point;
+            }
         }
+
+        var own = -1d;
+
+        for (var i = _recent.Count - 1; i >= 0; i--)
+        {
+            if (Vector2.DistanceSquared(here, _recent[i].Point) <= tolerance)
+            {
+                own = (now - _recent[i].At).TotalMilliseconds;
+                break;
+            }
+        }
+
+        StopDetail = $"the cursor found at ({here.X:0},{here.Y:0}), {MathF.Sqrt(nearest):0} px from the nearest point it was " +
+                     $"put, ({was.X:0},{was.Y:0}) {(now - nearestAt).TotalMilliseconds:0}ms ago; last sent to " +
+                     $"({Expected.X:0},{Expected.Y:0}), {(_travel != null ? "still on its way" : "arrived")}; " +
+                     (own >= 0 ? $"this pointer put it there itself {own:0}ms ago, so the game's report lagged"
+                               : $"not anywhere this pointer put it in the last {ReportedFor.TotalSeconds:0}s");
 
         return true;
     }
@@ -593,6 +643,11 @@ internal sealed class MousePointer
 
         if (Expired())
         {
+            var found = Where();
+
+            StopDetail = $"sent to ({Expected.X:0},{Expected.Y:0}) {(Now() - _placedAt).TotalMilliseconds:0}ms ago, the cursor read at " +
+                         $"({found.X:0},{found.Y:0}), {Vector2.Distance(found, Expected):0.#} px off where {Accepts:0.#} px counts as arrived" +
+                         (_travel != null ? ", still on its way" : "");
             Stop(StopReason.MoveNeverLanded);
             return;
         }

@@ -83,6 +83,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // simply stops working, which is the safe way round for it to be wrong.
         b.SaveMethod("ExileInput2.Stopped", (string who) => StoppedReason(who));
 
+        // What the last stop saw, for a caller to record; never drawn here. See MousePointer.StopDetail.
+        b.SaveMethod("ExileInput2.StopDetail", (string who) => PointerFor(who).StopDetail);
+
         // Aiming. A rect is what every caller has, since that is what an element reports.
         b.SaveMethod("ExileInput2.MoveTo",
             (string who, RectangleF rect, bool ctrl, bool shift) => Move(who, rect, Modifier.Of(ctrl, shift)));
