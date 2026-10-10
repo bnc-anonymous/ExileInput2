@@ -727,7 +727,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                    (reason == StopReason.PlayerMovedTheMouse && pointer.Departed > 0f
                        ? $" The cursor was {pointer.Departed:0} px from anywhere it had been put - " +
                          $"last left at ({pointer.LeftAt.X:0},{pointer.LeftAt.Y:0}), found at " +
-                         $"({pointer.FoundAt.X:0},{pointer.FoundAt.Y:0})."
+                         $"({pointer.FoundAt.X:0},{pointer.FoundAt.Y:0})." +
+                         (pointer.OwnSendAgoMs >= 0f
+                             ? $" It had put the cursor there itself {pointer.OwnSendAgoMs:0}ms earlier: the game's report lagging, not a hand."
+                             : " It had not put the cursor there in the last 2 seconds.")
                        : ""));
     }
 

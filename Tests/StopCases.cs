@@ -21,6 +21,13 @@ internal sealed record StopCase(string Name, StopReason Want, string Reason)
     /// </summary>
     public int ReportLagFrames { get; init; } = 2;
 
+    /// <summary>
+    /// How long a HUD frame lasts, which is how often the pointer steps and sends. 16 is 60 fps; ExileCore's
+    /// TargetFps runs it faster, 165 on the player's machine (2026-10-10), and the game's report lags by its own
+    /// frames, not the HUD's.
+    /// </summary>
+    public int FrameMs { get; init; } = 16;
+
     /// <summary>Swallow the sends, so the cursor never confirms and the timeout has a job.</summary>
     public bool SendsGoNowhere { get; init; }
 
@@ -130,6 +137,26 @@ internal static class StopCases
             Teleports = true,
         },
 
+        new("10 At 165 fps, the game reporting the cursor 90ms late is not the player", StopReason.None,
+            "case 2 at the frame rate the HUD actually runs at. The ring held the last twelve sends, a fifth of a "
+            + "second at 60 fps and 73ms at 165, so a report that lagged a few game frames fell out of it and the "
+            + "pointer's own path read as a hand: three runs stopped, blaming the player, on 2026-10-10, the cursor "
+            + "found 13, 17 and 24 px from the nearest send")
+        {
+            FrameMs = 6,
+            ReportLagFrames = 15,
+        },
+
+        new("11 At 165 fps a nudge still counts", StopReason.PlayerMovedTheMouse,
+            "case 4 at the same frame rate. Remembering sends by time rather than count must not "
+            + "widen what reads as the pointer's own")
+        {
+            FrameMs = 6,
+            ReportLagFrames = 15,
+            PlayerMovesAtStep = 3,
+            PlayerMovesTo = new Vector2(260f, 940f),
+        },
+
         new("9  A new session does not inherit the last one's sends", StopReason.None,
             "moving the mouse BETWEEN two runs is not interference with either of them, and it is "
             + "what anybody does - place a bomb, reposition, place the next. Carried across the "
@@ -226,7 +253,7 @@ internal static class StopCases
                     break;
                 }
 
-                now += TimeSpan.FromMilliseconds(16);
+                now += TimeSpan.FromMilliseconds(c.FrameMs);
             }
 
             var reason = pointer.Stopped;
@@ -261,7 +288,7 @@ internal static class StopCases
                     if (pointer.Stopped != StopReason.None)
                         break;
 
-                    now += TimeSpan.FromMilliseconds(16);
+                    now += TimeSpan.FromMilliseconds(c.FrameMs);
                 }
 
                 reason = pointer.Stopped;

@@ -1,5 +1,6 @@
 using ExileCore2;
 using System;
+using System.Collections.Generic;
 using System.Windows.Forms;
 using RectangleF = ExileCore2.Shared.RectangleF;
 using Vector2 = System.Numerics.Vector2;
@@ -87,20 +88,32 @@ internal sealed class MousePointer
     public StopReason Stopped { get; private set; }
 
     /// <summary>
-    /// The last few points the cursor was sent to, newest anywhere in the ring.
+    /// The points the cursor was sent to lately, oldest first, with when.
     ///
-    /// A ring rather than a single point because the game reports its cursor a frame or several
+    /// Many rather than a single point because the game reports its cursor a frame or several
     /// behind where it was put - mid-journey the two are never equal, and comparing against the
     /// latest send alone would read this pointer's own movement as the player's. Every position the
     /// game can legitimately be reporting is one this pointer sent recently, so the question is
     /// whether the cursor is near ANY of them.
+    ///
+    /// Kept by time, not by count. The last twelve sends were a fifth of a second at 60 fps but 73ms
+    /// at the 165 the HUD ran at, and a report a few game frames late fell out of them: three runs
+    /// stopped on 2026-10-10 with the cursor 13, 17 and 24 px from the nearest kept send and nobody
+    /// touching the mouse. See StopCases 10.
     /// </summary>
-    private readonly Vector2[] _recent = new Vector2[RecentSends];
-    private int _recentCount;
-    private int _recentNext;
+    private readonly List<(Vector2 Point, TimeSpan At)> _recent = new();
 
-    /// <summary>Roughly a fifth of a second at 60fps, which is more lag than the report has ever shown.</summary>
-    private const int RecentSends = 12;
+    /// <summary>How far back a send still counts as somewhere the game may be reporting.</summary>
+    private static readonly TimeSpan RecentFor = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// The sends always kept, however old: an idle pointer's cursor stays where it was last put, and a
+    /// teleport sends only once.
+    /// </summary>
+    private const int RecentSendsAtLeast = 12;
+
+    /// <summary>How far back sends are kept for the report only, never for the decision. See OwnSendAgoMs.</summary>
+    private static readonly TimeSpan ReportedFor = TimeSpan.FromSeconds(2);
 
     /// <summary>When the outstanding move was asked for, for the timeout.</summary>
     private TimeSpan _placedAt;
@@ -109,11 +122,16 @@ internal sealed class MousePointer
 
     private void Remember(Vector2 client)
     {
-        _recent[_recentNext] = client;
-        _recentNext = (_recentNext + 1) % RecentSends;
+        var now = Now();
 
-        if (_recentCount < RecentSends)
-            _recentCount++;
+        _recent.Add((client, now));
+
+        var stale = 0;
+
+        while (stale < _recent.Count - RecentSendsAtLeast && now - _recent[stale].At > ReportedFor)
+            stale++;
+
+        _recent.RemoveRange(0, stale);
     }
 
     /// <summary>
@@ -125,17 +143,25 @@ internal sealed class MousePointer
     /// </summary>
     public bool Interfered()
     {
-        if (_recentCount == 0)
+        if (_recent.Count == 0)
             return false;
 
         var here = Where();
+        var now = Now();
         var tolerance = (float)StopTolerancePx * StopTolerancePx;
         var nearest = float.MaxValue;
         var was = Vector2.Zero;
+        var counted = Math.Max(0, _recent.Count - RecentSendsAtLeast);
 
-        for (var i = 0; i < _recentCount; i++)
+        // Newest first. Within RecentFor, or among the last RecentSendsAtLeast, a send counts.
+        for (var i = _recent.Count - 1; i >= 0; i--)
         {
-            var gap = Vector2.DistanceSquared(here, _recent[i]);
+            var (point, at) = _recent[i];
+
+            if (i < counted && now - at > RecentFor)
+                break;
+
+            var gap = Vector2.DistanceSquared(here, point);
 
             if (gap <= tolerance)
                 return false;
@@ -144,7 +170,20 @@ internal sealed class MousePointer
                 continue;
 
             nearest = gap;
-            was = _recent[i];
+            was = point;
+        }
+
+        // Kept for the report: a cursor found on this pointer's own older path is the game's report lagging
+        // further than RecentFor, not a hand.
+        OwnSendAgoMs = -1f;
+
+        for (var i = _recent.Count - 1; i >= 0; i--)
+        {
+            if (Vector2.DistanceSquared(here, _recent[i].Point) <= tolerance)
+            {
+                OwnSendAgoMs = (float)(now - _recent[i].At).TotalMilliseconds;
+                break;
+            }
         }
 
         // Kept for the report, not for the decision.
@@ -176,6 +215,12 @@ internal sealed class MousePointer
     /// <summary>Where the cursor actually was, when it last stopped.</summary>
     public Vector2 FoundAt { get; private set; }
 
+    /// <summary>
+    /// How long before the stop this pointer had itself put the cursor where it was found, or -1 when it never had in the
+    /// last ReportedFor. Not -1 means the game's report lagged past RecentFor rather than a hand moving the mouse.
+    /// </summary>
+    public float OwnSendAgoMs { get; private set; } = -1f;
+
     /// <summary>Whether an asked-for move has gone unconfirmed for longer than it should have.</summary>
     public bool Expired() =>
         Awaiting && ArriveTimeoutMs > 0 && (Now() - _placedAt).TotalMilliseconds > ArriveTimeoutMs;
@@ -196,8 +241,7 @@ internal sealed class MousePointer
     public void Resume()
     {
         Stopped = StopReason.None;
-        _recentCount = 0;
-        _recentNext = 0;
+        _recent.Clear();
     }
 
     /// <summary>The journey in progress, or null when the cursor is where it was put.</summary>
@@ -628,7 +672,6 @@ internal sealed class MousePointer
     public void Fresh()
     {
         Forget();
-        _recentCount = 0;
-        _recentNext = 0;
+        _recent.Clear();
     }
 }
