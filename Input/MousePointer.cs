@@ -274,26 +274,34 @@ internal sealed class MousePointer
         // How far the rect reaches along a direction, in pixels, at the spread.
         float Reach(Vector2 direction) => (Math.Abs(direction.X) * half.X + Math.Abs(direction.Y) * half.Y) * spread;
 
-        var offset = -along * Undershoot * Reach(along);
+        var spot = new Vector2(u * spread, v * spread) - along * Undershoot * Reach(along) / half;
 
-        if (scatter != null)
+        // A click scattered outside the spread is drawn again rather than pushed onto its edge, which drew a line of
+        // clicks along it (picture of 2026-10-10). The spot is always well inside: the drift and the habit reach
+        // HabitWander + HabitOffset of the spread and the undershoot Undershoot, under one between them. Clamped only
+        // should every draw miss, which a scatter this narrow next to the spread all but never does.
+        var landed = spot;
+
+        for (var draw = 0; scatter != null && draw < ScatterDraws; draw++)
         {
-            if (along == Vector2.Zero)
-            {
-                offset += new Vector2(Normal(scatter) * ScatterAcross * half.X * spread, Normal(scatter) * ScatterAcross * half.Y * spread);
-            }
-            else
-            {
-                offset += along * Normal(scatter) * ScatterAlong * Reach(along);
-                offset += across * Normal(scatter) * ScatterAcross * Reach(across);
-            }
+            var offset = along == Vector2.Zero
+                ? new Vector2(Normal(scatter) * ScatterAcross * half.X * spread, Normal(scatter) * ScatterAcross * half.Y * spread)
+                : along * Normal(scatter) * ScatterAlong * Reach(along) + across * Normal(scatter) * ScatterAcross * Reach(across);
+
+            landed = spot + offset / half;
+
+            if (Math.Abs(landed.X) <= spread && Math.Abs(landed.Y) <= spread)
+                break;
         }
 
-        u = Math.Clamp(u * spread + offset.X / half.X, -spread, spread);
-        v = Math.Clamp(v * spread + offset.Y / half.Y, -spread, spread);
+        u = Math.Clamp(landed.X, -spread, spread);
+        v = Math.Clamp(landed.Y, -spread, spread);
 
         return new Vector2(rect.X + half.X * (1f + u), rect.Y + half.Y * (1f + v));
     }
+
+    /// <summary>How many times a click scattered outside the spread is drawn again before it is clamped onto the edge.</summary>
+    private const int ScatterDraws = 16;
 
     /// <summary>The drift's reach, as a share of the spread. Half of it: the scatter and the target's habit take the rest.</summary>
     private const float HabitWander = 0.5f;

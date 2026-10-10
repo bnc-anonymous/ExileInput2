@@ -457,6 +457,29 @@ internal static class AimCases
             worst = Math.Max(worst, Math.Max(u, v));
         }
 
+        // On the edge of the spread: a scatter clamped there piles up along it in a line no hand draws.
+        var onEdge = 0;
+
+        for (var i = 0; i < all.Count; i++)
+        {
+            var r = rects[i];
+            var u = Math.Abs(all[i].X - r.Center.X) / (r.Width / 2f);
+            var v = Math.Abs(all[i].Y - r.Center.Y) / (r.Height / 2f);
+
+            if (u >= 0.5f - 0.0005f || v >= 0.5f - 0.0005f)
+                onEdge++;
+        }
+
+        var edgeShare = (float)onEdge / all.Count;
+
+        Report(edgeShare <= 0.01f,
+            "14 Clicks do not pile up on the edge of the spread",
+            "every aim of cases 9 to 11, spread 50%",
+            "1% of aims or fewer exactly on the spread's edge",
+            $"{edgeShare * 100f:0.0}% on the edge, {onEdge} of {all.Count}",
+            "a scatter that would land outside the spread was pushed onto its edge, drawing a line of clicks " +
+            "along it (picture of 2026-10-10); one outside is drawn again instead");
+
         Report(worst <= 0.5f + 0.001f,
             "13 No aim leaves the spread",
             "every aim of cases 9 to 11, spread 50%",
