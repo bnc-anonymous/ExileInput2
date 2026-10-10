@@ -274,30 +274,198 @@ internal static class AimCases
                 row.Y + row.Height * (0.5f + (float)(scatter.NextDouble() - 0.5) * 0.5f)));
         }
 
-        var walkStep = Average(walk);
-        var jumpStep = Average(jump);
+        // The spot the clicks scatter about: a moving average over a few aims takes the scatter out.
+        var spot = MovingAverage(walk, 20);
+        var spotStep = Average(spot);
         var walkSpan = Span(walk);
+        var jumpStep = Average(jump);
 
-        // Near its neighbour by an order of magnitude, and still covering the row rather than
-        // sitting in one spot.
-        var driftOk = walkStep < jumpStep / 5f && walkSpan > row.Height / 4f;
+        // The spot moves far less between aims than a random draw does, and still covers the row.
+        var driftOk = spotStep < jumpStep / 5f && walkSpan > row.Height / 4f;
 
         if (!driftOk)
             failed++;
 
-        Console.WriteLine($"{(driftOk ? "  ok  " : "FAIL  ")}8  Aim wanders rather than jumping");
-        Console.WriteLine("        given 400 successive aims at one 300x54 row, spread 50%");
-        Console.WriteLine("        want  each landing far nearer its predecessor than a random draw would");
-        Console.WriteLine("              be, while still covering the row");
-        Console.WriteLine($"        got   {walkStep:0.0}px between neighbours against {jumpStep:0.0}px " +
-                          $"for random draws, over a {walkSpan:0.0}px span");
+        Console.WriteLine($"{(driftOk ? "  ok  " : "FAIL  ")}8  The spot clicks scatter about wanders rather than jumping");
+        Console.WriteLine("        given 400 successive aims at one 300x54 row, spread 50%, the spot their average over 20");
+        Console.WriteLine("        want  the average moving far less between aims than a random draw, while still");
+        Console.WriteLine("              covering the row");
+        Console.WriteLine($"        got   {spotStep:0.0}px between neighbours against {jumpStep:0.0}px " +
+                          $"for random draws, the clicks over a {walkSpan:0.0}px span");
         Console.WriteLine("        why   a person clicking one slot four hundred times rests somewhere, drifts,");
         Console.WriteLine("              and settles somewhere else. Uniform draws make a cloud no hand has");
         Console.WriteLine("              ever made - and make the same one every session, which is a signature");
         Console.WriteLine("              of its own");
         Console.WriteLine();
 
-        Console.WriteLine($"{All.Length + 1 - failed}/{All.Length + 1} match");
+        var scattered = ScatterCases();
+        failed += scattered.Failed;
+
+        Console.WriteLine($"{All.Length + 1 + scattered.Count - failed}/{All.Length + 1 + scattered.Count} match");
         return failed;
     }
+
+    /// <summary>Each point averaged with the ones before it, up to this many.</summary>
+    private static List<Vector2> MovingAverage(List<Vector2> points, int over)
+    {
+        var averaged = new List<Vector2>();
+
+        for (var i = 0; i < points.Count; i++)
+        {
+            var from = Math.Max(0, i - over + 1);
+            var sum = Vector2.Zero;
+
+            for (var j = from; j <= i; j++)
+                sum += points[j];
+
+            averaged.Add(sum / (i - from + 1));
+        }
+
+        return averaged;
+    }
+
+    /// <summary>How far, on average, points stray from their moving average on one axis: the scatter, the wander taken out.</summary>
+    private static float ScatterOn(List<Vector2> points, bool x)
+    {
+        var spot = MovingAverage(points, 20);
+        var total = 0f;
+
+        for (var i = 0; i < points.Count; i++)
+            total += Math.Abs(x ? points[i].X - spot[i].X : points[i].Y - spot[i].Y);
+
+        return total / points.Count;
+    }
+
+    /// <summary>
+    /// Where clicks land about the spot: scattered from one to the next, more along the approach than across it, a
+    /// little short of the centre, each target with a spot of its own, and never outside the spread.
+    /// </summary>
+    private static (int Failed, int Count) ScatterCases()
+    {
+        var failed = 0;
+        var count = 0;
+
+        void Report(bool ok, string name, string given, string want, string got, string why)
+        {
+            count++;
+
+            if (!ok)
+                failed++;
+
+            Console.WriteLine($"{(ok ? "  ok  " : "FAIL  ")}{name}");
+            Console.WriteLine($"        given {given}");
+            Console.WriteLine($"        want  {want}");
+            Console.WriteLine($"        got   {got}");
+            Console.WriteLine($"        why   {why}");
+            Console.WriteLine();
+        }
+
+        List<Vector2> Aims(RectangleF rect, Vector2 from, int seed, int n = 400)
+        {
+            var hand = new MousePointer(null, new Random(seed)) { SpreadPercent = 50f };
+            var points = new List<Vector2>();
+
+            for (var i = 0; i < n; i++)
+                points.Add(hand.PointIn(rect, from));
+
+            return points;
+        }
+
+        // A button the size of the reforging bench's, approached from above as from the tablets.
+        var button = new RectangleF(790f, 1139f, 93f, 29f);
+        var above = new Vector2(830f, 700f);
+        var presses = Aims(button, above, 20261010);
+        var uniform = new Random(20261010);
+        var draws = new List<Vector2>();
+
+        for (var i = 0; i < 400; i++)
+            draws.Add(new Vector2(button.X + button.Width * (0.5f + (float)(uniform.NextDouble() - 0.5) * 0.5f),
+                button.Y + button.Height * (0.5f + (float)(uniform.NextDouble() - 0.5) * 0.5f)));
+
+        var pressStep = Average(presses);
+        var drawStep = Average(draws);
+
+        Report(pressStep > drawStep / 4f && pressStep < drawStep,
+            "9  Each click lands apart from the last, but nearer than a random draw",
+            "400 presses of a 93x29 button from above, spread 50%",
+            "between a quarter of and all of a random draw's distance between neighbours",
+            $"{pressStep:0.0}px between neighbours against {drawStep:0.0}px for random draws",
+            "a button pressed once a reforge was struck in nearly the same spot every time: the aim drifted a " +
+            "couple of pixels a click and nothing else moved it (2026-10-10)");
+
+        // A square approached from the left and from above: the cloud stretched along each approach.
+        var square = new RectangleF(400f, 400f, 120f, 120f);
+        var fromLeft = Aims(square, new Vector2(0f, 460f), 7);
+        var fromAbove = Aims(square, new Vector2(460f, 0f), 7);
+        var leftRatio = ScatterOn(fromLeft, true) / Math.Max(0.01f, ScatterOn(fromLeft, false));
+        var aboveRatio = ScatterOn(fromAbove, false) / Math.Max(0.01f, ScatterOn(fromAbove, true));
+
+        Report(leftRatio > 1.25f && aboveRatio > 1.25f,
+            "10 The scatter is longer along the approach than across it",
+            "400 aims at a 120x120 square from the left, and 400 from above",
+            "the scatter along each approach at least 1.25 times the scatter across it",
+            $"{leftRatio:0.00} from the left, {aboveRatio:0.00} from above",
+            "a reach misses long or short far more than it misses to the side");
+
+        // The same square from the left and from the right, the same habit: the landing sits nearer each side.
+        var fromRight = Aims(square, new Vector2(1000f, 460f), 7);
+        var leftMean = fromLeft.Average(p => p.X);
+        var rightMean = fromRight.Average(p => p.X);
+
+        Report(rightMean - leftMean > 2f,
+            "11 A little short of the centre, on the side the cursor came from",
+            "400 aims at a 120x120 square from the left, and 400 from the right, the same habit",
+            "the landings from the left averaging further left than those from the right",
+            $"{leftMean:0.0}px from the left against {rightMean:0.0}px from the right",
+            "a hand slows into a target and tends to stop before its middle");
+
+        // Two buttons alike but apart, pressed in turn: each has a spot of its own.
+        var hand2 = new MousePointer(null, new Random(99)) { SpreadPercent = 50f };
+        var first = new RectangleF(100f, 100f, 93f, 29f);
+        var second = new RectangleF(600f, 100f, 93f, 29f);
+        var firstOff = new List<Vector2>();
+        var secondOff = new List<Vector2>();
+
+        for (var i = 0; i < 200; i++)
+        {
+            firstOff.Add(hand2.PointIn(first, new Vector2(350f, 600f)) - first.Center);
+            secondOff.Add(hand2.PointIn(second, new Vector2(350f, 600f)) - second.Center);
+        }
+
+        var firstSpot = new Vector2(firstOff.Average(p => p.X), firstOff.Average(p => p.Y));
+        var secondSpot = new Vector2(secondOff.Average(p => p.X), secondOff.Average(p => p.Y));
+        var apart = Vector2.Distance(firstSpot, secondSpot);
+
+        Report(apart > 2f,
+            "12 Each target has a spot of its own",
+            "two 93x29 buttons apart, pressed in turn 200 times each from between them",
+            "their average landings, each from its own centre, more than 2px apart",
+            $"{apart:0.0}px apart",
+            "one shared drift put the same habit on every target");
+
+        // Every aim inside the spread, the guarantee cases 1 to 7 rest on.
+        var all = presses.Concat(fromLeft).Concat(fromAbove).Concat(fromRight).ToList();
+        var rects = Enumerable.Repeat(button, presses.Count).Concat(Enumerable.Repeat(square, fromLeft.Count * 3)).ToList();
+        var worst = 0f;
+
+        for (var i = 0; i < all.Count; i++)
+        {
+            var r = rects[i];
+            var u = Math.Abs(all[i].X - r.Center.X) / (r.Width / 2f);
+            var v = Math.Abs(all[i].Y - r.Center.Y) / (r.Height / 2f);
+
+            worst = Math.Max(worst, Math.Max(u, v));
+        }
+
+        Report(worst <= 0.5f + 0.001f,
+            "13 No aim leaves the spread",
+            "every aim of cases 9 to 11, spread 50%",
+            "each within half the rect's half-size of its centre on both axes",
+            $"furthest {worst:0.000} of the half-size",
+            "the arrival tolerance is bounded by the aim's distance from the edge; an aim outside the spread is " +
+            "one a landing can slip past the rect from");
+
+        return (failed, count);
+    }
+
 }

@@ -233,27 +233,116 @@ internal sealed class MousePointer
     /// point stays off the boundary, where a rect that is a pixel generous starts landing outside
     /// the thing it describes.
     /// </summary>
-    public Vector2 PointIn(RectangleF rect)
+    ///
+    /// **The drift is the habit; each click scatters about it.** On its own the drift moved a couple of pixels a
+    /// click, so a button pressed once a reforge was struck in nearly the same spot every time (2026-10-10). So the
+    /// spot is the drift, at half its old reach, plus a spot of this target's own (see HabitOf), a little short of the
+    /// centre on the side the cursor comes from; and each click lands off it by a bell curve, longer along the
+    /// approach than across it. Everything stays within the spread, as the drift alone did: the arrival tolerance is
+    /// bounded by the aim's distance from the edge (see BoundFor). The fractions are chosen, not measured.
+    /// </summary>
+    public Vector2 PointIn(RectangleF rect, Vector2? from = null)
     {
         _drift += DriftStep + (float)_rng.NextDouble() * DriftStep;
-        return PointIn(rect, SpreadPercent, _drift);
+        return PointIn(rect, SpreadPercent, _drift, from, HabitOf(rect), _rng);
     }
 
-    /// <summary>The same, without needing a pointer or a game to ask it.</summary>
-    internal static Vector2 PointIn(RectangleF rect, float spreadPercent, float drift)
+    /// <summary>
+    /// The same, without needing a pointer or a game to ask it. With no source of scatter, the spot alone: the drift and
+    /// the target's habit, and the undershoot when the cursor's place is given.
+    /// </summary>
+    internal static Vector2 PointIn(RectangleF rect, float spreadPercent, float drift, Vector2? from = null,
+        Vector2 habit = default, Random scatter = null)
     {
         var spread = Math.Clamp(spreadPercent, 0f, 95f) / 100f;
+        var half = new Vector2(rect.Width / 2f, rect.Height / 2f);
 
-        // Two samples far apart on the second axis, so the horizontal and vertical wander are not
-        // the same walk. Sampled from one line each, they would move together and the aim would
-        // slide along a diagonal.
-        var x = PerlinNoise.Full(drift, 0f);
-        var y = PerlinNoise.Full(0f, drift + 512f);
+        if (spread <= 0f || half.X <= 0f || half.Y <= 0f)
+            return rect.Center;
 
-        return new Vector2(
-            rect.X + rect.Width * (0.5f + x * 0.5f * spread),
-            rect.Y + rect.Height * (0.5f + y * 0.5f * spread));
+        // Where on the rect, from -1 to 1 each way across its half-size. Two samples far apart on the second axis, so
+        // the horizontal and vertical wander are not the same walk: from one line each, they would move together and
+        // the aim would slide along a diagonal.
+        var u = PerlinNoise.Full(drift, 0f) * HabitWander + habit.X;
+        var v = PerlinNoise.Full(0f, drift + 512f) * HabitWander + habit.Y;
+
+        // Along the approach and across it, in pixels; nought with the cursor on the centre or no place given.
+        var towards = from is { } at ? rect.Center - at : Vector2.Zero;
+        var along = towards.Length() > 1f ? towards / towards.Length() : Vector2.Zero;
+        var across = new Vector2(-along.Y, along.X);
+
+        // How far the rect reaches along a direction, in pixels, at the spread.
+        float Reach(Vector2 direction) => (Math.Abs(direction.X) * half.X + Math.Abs(direction.Y) * half.Y) * spread;
+
+        var offset = -along * Undershoot * Reach(along);
+
+        if (scatter != null)
+        {
+            if (along == Vector2.Zero)
+            {
+                offset += new Vector2(Normal(scatter) * ScatterAcross * half.X * spread, Normal(scatter) * ScatterAcross * half.Y * spread);
+            }
+            else
+            {
+                offset += along * Normal(scatter) * ScatterAlong * Reach(along);
+                offset += across * Normal(scatter) * ScatterAcross * Reach(across);
+            }
+        }
+
+        u = Math.Clamp(u * spread + offset.X / half.X, -spread, spread);
+        v = Math.Clamp(v * spread + offset.Y / half.Y, -spread, spread);
+
+        return new Vector2(rect.X + half.X * (1f + u), rect.Y + half.Y * (1f + v));
     }
+
+    /// <summary>The drift's reach, as a share of the spread. Half of it: the scatter and the target's habit take the rest.</summary>
+    private const float HabitWander = 0.5f;
+
+    /// <summary>How far short of the centre a click lands on average, as a share of the rect's reach along the approach.</summary>
+    private const float Undershoot = 0.1f;
+
+    /// <summary>The scatter's standard deviation along the approach, as a share of the rect's reach that way.</summary>
+    private const float ScatterAlong = 0.3f;
+
+    /// <summary>The scatter's standard deviation across the approach, as a share of the rect's reach that way.</summary>
+    private const float ScatterAcross = 0.18f;
+
+    /// <summary>How far a target's own spot may sit from the centre each way, as a share of the spread.</summary>
+    private const float HabitOffset = 0.25f;
+
+    /// <summary>A standard normal draw, by Box-Muller.</summary>
+    private static float Normal(Random random)
+    {
+        var a = 1.0 - random.NextDouble();
+        var b = random.NextDouble();
+
+        return (float)(Math.Sqrt(-2.0 * Math.Log(a)) * Math.Cos(2.0 * Math.PI * b));
+    }
+
+    /// <summary>
+    /// Each target's own spot, by its rect to the nearest 8 pixels: up to HabitOffset of the spread from the centre each
+    /// way, drawn the first time it is aimed at and kept for the session. A hand that presses one button over and over
+    /// favours a place on it, and a different place on the next button.
+    /// </summary>
+    private Vector2 HabitOf(RectangleF rect)
+    {
+        var key = ((int)MathF.Round(rect.X / 8f), (int)MathF.Round(rect.Y / 8f), (int)MathF.Round(rect.Width / 8f),
+            (int)MathF.Round(rect.Height / 8f));
+
+        if (_habits.TryGetValue(key, out var kept))
+            return kept;
+
+        // Bounded: a session aims at many rects, most once.
+        if (_habits.Count >= MostHabits)
+            _habits.Clear();
+
+        return _habits[key] = new Vector2(((float)_rng.NextDouble() * 2f - 1f) * HabitOffset,
+            ((float)_rng.NextDouble() * 2f - 1f) * HabitOffset);
+    }
+
+    private readonly Dictionary<(int, int, int, int), Vector2> _habits = new();
+
+    private const int MostHabits = 256;
 
     /// <summary>
     /// How far along the noise each aim moves.
@@ -420,7 +509,7 @@ internal sealed class MousePointer
             return here;
         }
 
-        var target = PointIn(rect);
+        var target = PointIn(rect, here);
 
         Place(target, modifiers);
 
