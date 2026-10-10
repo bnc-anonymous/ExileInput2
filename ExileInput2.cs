@@ -720,28 +720,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         _drags.Remove(who);
         _lease.Release(who);
         _held = null;
-
-        var pointer = PointerFor(who);
-
-        LogMessage($"ExileInput2: {who} stopped, {Describe(reason)}." +
-                   (reason == StopReason.PlayerMovedTheMouse && pointer.Departed > 0f
-                       ? $" The cursor was {pointer.Departed:0} px from anywhere it had been put - " +
-                         $"last left at ({pointer.LeftAt.X:0},{pointer.LeftAt.Y:0}), found at " +
-                         $"({pointer.FoundAt.X:0},{pointer.FoundAt.Y:0})." +
-                         (pointer.OwnSendAgoMs >= 0f
-                             ? $" It had put the cursor there itself {pointer.OwnSendAgoMs:0}ms earlier: the game's report lagging, not a hand."
-                             : " It had not put the cursor there in the last 2 seconds.")
-                       : ""));
     }
-
-    private static string Describe(StopReason reason) => reason switch
-    {
-        StopReason.PlayerMovedTheMouse => "the mouse was moved",
-        StopReason.MoveNeverLanded => "the cursor never reached where it was sent",
-        StopReason.GameLostFocus => "the game is not in the foreground",
-        StopReason.GameIsTakingInput => "the game is taking typed input",
-        _ => "no reason given",
-    };
 
     /// <summary>Who held the cursor last tick, so an expiry can be noticed and tidied after.</summary>
     private string _held;

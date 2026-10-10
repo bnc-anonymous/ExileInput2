@@ -112,9 +112,6 @@ internal sealed class MousePointer
     /// </summary>
     private const int RecentSendsAtLeast = 12;
 
-    /// <summary>How far back sends are kept for the report only, never for the decision. See OwnSendAgoMs.</summary>
-    private static readonly TimeSpan ReportedFor = TimeSpan.FromSeconds(2);
-
     /// <summary>When the outstanding move was asked for, for the timeout.</summary>
     private TimeSpan _placedAt;
 
@@ -128,7 +125,7 @@ internal sealed class MousePointer
 
         var stale = 0;
 
-        while (stale < _recent.Count - RecentSendsAtLeast && now - _recent[stale].At > ReportedFor)
+        while (stale < _recent.Count - RecentSendsAtLeast && now - _recent[stale].At > RecentFor)
             stale++;
 
         _recent.RemoveRange(0, stale);
@@ -147,79 +144,21 @@ internal sealed class MousePointer
             return false;
 
         var here = Where();
-        var now = Now();
         var tolerance = (float)StopTolerancePx * StopTolerancePx;
-        var nearest = float.MaxValue;
-        var was = Vector2.Zero;
-        var counted = Math.Max(0, _recent.Count - RecentSendsAtLeast);
 
-        // Newest first. Within RecentFor, or among the last RecentSendsAtLeast, a send counts.
-        for (var i = _recent.Count - 1; i >= 0; i--)
+        // Every send kept counts: those within RecentFor, and always the last RecentSendsAtLeast. See Remember.
+        //
+        // **"The mouse was moved" is a conclusion, and it is sometimes the wrong one.** The cursor being somewhere
+        // this pointer never put it is the only evidence there is. A hand on the mouse is one explanation; the game's
+        // report lagging past RecentFor is another, which is what RecentFor's length is for.
+        foreach (var (point, _) in _recent)
         {
-            var (point, at) = _recent[i];
-
-            if (i < counted && now - at > RecentFor)
-                break;
-
-            var gap = Vector2.DistanceSquared(here, point);
-
-            if (gap <= tolerance)
+            if (Vector2.DistanceSquared(here, point) <= tolerance)
                 return false;
-
-            if (gap >= nearest)
-                continue;
-
-            nearest = gap;
-            was = point;
         }
-
-        // Kept for the report: a cursor found on this pointer's own older path is the game's report lagging
-        // further than RecentFor, not a hand.
-        OwnSendAgoMs = -1f;
-
-        for (var i = _recent.Count - 1; i >= 0; i--)
-        {
-            if (Vector2.DistanceSquared(here, _recent[i].Point) <= tolerance)
-            {
-                OwnSendAgoMs = (float)(now - _recent[i].At).TotalMilliseconds;
-                break;
-            }
-        }
-
-        // Kept for the report, not for the decision.
-        //
-        // **"The mouse was moved" is a conclusion, and it is sometimes the wrong one.** The cursor
-        // being somewhere this pointer never put it is the only evidence there is, and a hand on the
-        // mouse is one explanation - the game warping the cursor when a panel opens is another, and
-        // the log said the same sentence for both. Observed: a click on the combinations button
-        // landed, the pointer set off for the reward it had chosen, and it stopped on the way with
-        // nobody touching anything.
-        //
-        // So the distance and the two positions go in the message. If the jump is tens of pixels in
-        // one tick and lands somewhere structural - a panel's middle, a screen edge - that is not a
-        // hand, and the fix is to know which before changing the rule that keeps the player in
-        // charge.
-        Departed = MathF.Sqrt(nearest);
-        LeftAt = was;
-        FoundAt = here;
 
         return true;
     }
-
-    /// <summary>How far the cursor was from anywhere this pointer left it, when it last stopped.</summary>
-    public float Departed { get; private set; }
-
-    /// <summary>The nearest place this pointer had put the cursor, when it last stopped.</summary>
-    public Vector2 LeftAt { get; private set; }
-
-    /// <summary>Where the cursor actually was, when it last stopped.</summary>
-    public Vector2 FoundAt { get; private set; }
-
-    /// <summary>
-    /// How long before the stop this pointer had itself put the cursor where it was found, or -1 when it never had in the
-    /// last ReportedFor. Not -1 means the game's report lagged past RecentFor rather than a hand moving the mouse.
-    /// </summary>
-    public float OwnSendAgoMs { get; private set; } = -1f;
 
     /// <summary>Whether an asked-for move has gone unconfirmed for longer than it should have.</summary>
     public bool Expired() =>
