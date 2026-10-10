@@ -60,6 +60,13 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             _SaveSettings();
         }
 
+        // Shipped changes to saved settings, once, saved at once like the seed. See ExileInput2Settings.Migrate.
+        if (Settings.SettingsVersion < ExileInput2Settings.CurrentSettingsVersion)
+        {
+            ExileInput2Settings.Migrate(Settings);
+            _SaveSettings();
+        }
+
         PerlinNoise.UseSeed(Settings.Seed);
         _seedInUse = Settings.Seed;
 

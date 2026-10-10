@@ -49,6 +49,9 @@ internal static class Program
         failed += SeedCases.Run();
 
         Console.WriteLine();
+        failed += SettingsCases.Run();
+
+        Console.WriteLine();
         Console.WriteLine(failed == 0
             ? "all tables match"
             : $"{failed} case(s) do not match");

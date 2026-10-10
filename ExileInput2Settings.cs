@@ -114,6 +114,39 @@ public class ExileInput2Settings : ISettings
     public bool SeedDrawn { get; set; }
 
     /// <summary>
+    /// Which of the shipped changes to saved settings this file has been through. Nought in a file written before there
+    /// were any, since a missing property keeps its default when the file is read. See Migrate.
+    /// </summary>
+    public int SettingsVersion { get; set; }
+
+    /// <summary>The latest shipped change to saved settings. Raise it with a step in Migrate.</summary>
+    internal const int CurrentSettingsVersion = 1;
+
+    /// <summary>
+    /// Brings a saved file up to CurrentSettingsVersion, once, and says what changed; empty when nothing did.
+    ///
+    /// **1 - Aim Within from 50 to 90.** Clicks now cluster towards the middle whatever the spread, so 90 uses most of a
+    /// target without crowding its edge (2026-10-10). Only a file still at the old default of 50 is moved: any other
+    /// value was chosen. One left at 50 on purpose cannot be told from one never touched, and is moved too.
+    /// </summary>
+    internal static string Migrate(ExileInput2Settings settings)
+    {
+        if (settings == null || settings.SettingsVersion >= CurrentSettingsVersion)
+            return "";
+
+        var said = "";
+
+        if (settings.SettingsVersion < 1 && settings.SpreadPercent.Value == 50)
+        {
+            settings.SpreadPercent.Value = 90;
+            said = "Aim Within moved from the old default of 50% to 90%";
+        }
+
+        settings.SettingsVersion = CurrentSettingsVersion;
+        return said;
+    }
+
+    /// <summary>
     /// The seed, the buttons, and what the seed makes of the sliders above: a box to read or type the seed, New seed for
     /// one at random, Reset to defaults for the sliders, and each feel setting as used.
     /// </summary>
