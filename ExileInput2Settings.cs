@@ -18,8 +18,9 @@ public class ExileInput2Settings : ISettings
         "Nought is dead centre every time, which is both conspicuous and brittle - a rect read a " +
         "pixel off centre is still hit anywhere inside it. High values reach the edges, where a " +
         "rect drawn slightly larger than the thing it represents starts missing.\n\n" +
+        "Clicks cluster towards the middle whatever this is, thinning towards its edge.\n\n" +
         "One figure for every plugin that asks, which is the point of this living here.")]
-    public RangeNode<int> SpreadPercent { get; set; } = new RangeNode<int>(50, 0, 95);
+    public RangeNode<int> SpreadPercent { get; set; } = new RangeNode<int>(90, 0, 95);
 
     [Menu("Stay Put When Already There",
         "Leave the cursor alone when it is already on the thing being aimed at.\n\n" +
