@@ -103,7 +103,7 @@ internal sealed class ClickPlan
         {
             var item = Items[i];
             var current = i == first;
-            var line = current ? Color.FromArgb(230, 255, 210, 70) : Color.FromArgb(110, 255, 255, 255);
+            var line = current ? Color.FromArgb(230, Bright) : Color.FromArgb(110, 255, 255, 255);
             var points = new Vector2[PathSamples];
 
             for (var k = 0; k < PathSamples; k++)
@@ -120,17 +120,22 @@ internal sealed class ClickPlan
                 Letter(graphics, modifier, at + new Vector2(0f, -12f), true);
             }
 
-            // The click: down bright, up dim beside it.
+            // The click: down bright on the point, up dim beside it, a letter's width and a little apart; its number
+            // centred above it.
+            var size = graphics.MeasureText("M");
+            var step = new Vector2(size.X + 3f, 0f);
             var button = item.Right ? "R" : "L";
+
             Letter(graphics, button, item.To, true);
-            Letter(graphics, button, item.To + new Vector2(10f, 0f), false);
-            graphics.DrawText($"{i + 1}", item.To + new Vector2(-12f, -12f), Color.FromArgb(150, 200, 200, 200));
+            Letter(graphics, button, item.To + step, false);
+            graphics.DrawText($"{i + 1}", item.To - new Vector2(0f, size.Y + 2f), Faded,
+                ExileCore2.Shared.Enums.FontAlign.Center | ExileCore2.Shared.Enums.FontAlign.VerticalCenter);
 
             // The modifier coming up, after the last click that holds it.
             var last = i == Items.Count - 1 || !Items[i + 1].Carried;
 
             if (last && modifier.Length > 0)
-                Letter(graphics, modifier, item.To + new Vector2(20f, 0f), false);
+                Letter(graphics, modifier, item.To + step * 2f, false);
         }
     }
 
@@ -138,9 +143,18 @@ internal sealed class ClickPlan
 
     private static void Letter(Graphics graphics, string text, Vector2 at, bool down)
     {
-        graphics.DrawText(text, at, down ? Color.FromArgb(255, 255, 240, 120) : Color.FromArgb(120, 200, 200, 200),
+        graphics.DrawText(text, at, down ? Bright : Faded,
             ExileCore2.Shared.Enums.FontAlign.Center | ExileCore2.Shared.Enums.FontAlign.VerticalCenter);
     }
+
+    /// <summary>
+    /// A button or modifier going down, and the current path: AutoExpedition's green, its Next explosive colour's
+    /// default, so the plan reads as that plugin's other markings do.
+    /// </summary>
+    private static readonly Color Bright = Color.FromArgb(255, 90, 255, 120);
+
+    /// <summary>A button or modifier coming up, and the clicks' numbers: light enough to read over the game.</summary>
+    private static readonly Color Faded = Color.FromArgb(215, 225, 225, 225);
 
     /// <summary>C for ctrl, S for shift, A for alt; "" for none.</summary>
     private static string ModifierLetters(IReadOnlyList<Keys> modifiers)
