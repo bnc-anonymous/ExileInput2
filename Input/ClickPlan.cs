@@ -152,7 +152,7 @@ internal sealed class ClickPlan
     /// to 0 over a second once it is given up. Clicks already made fade out over DoneFadeFor from when they were made. See
     /// the class and ExileInput2.Render.
     /// </summary>
-    public void Draw(Graphics graphics, float opacity = 1f, bool doneOnly = false)
+    public void Draw(Graphics graphics, Colours colours, float opacity = 1f, bool doneOnly = false)
     {
         var first = Current != null ? Next - 1 : Next;
         var now = DateTime.UtcNow;
@@ -165,26 +165,26 @@ internal sealed class ClickPlan
             if (!_doneAt.TryGetValue(i, out var at) || now - at >= DoneFadeFor)
                 continue;
 
-            DrawItem(graphics, i, DoneColour, opacity * (1f - (float)((now - at).TotalMilliseconds / DoneFadeFor.TotalMilliseconds)));
+            DrawItem(graphics, i, colours.Done, false, opacity * (1f - (float)((now - at).TotalMilliseconds / DoneFadeFor.TotalMilliseconds)));
         }
 
         if (doneOnly)
             return;
 
         for (var i = Math.Max(0, first); i < Items.Count; i++)
-            DrawItem(graphics, i, i == first ? CurrentColour : LaterColour, opacity);
+            DrawItem(graphics, i, i == first ? colours.Current : colours.Later, i == first, opacity);
     }
 
     /// <summary>One click's path and marks in its state's colour, at this opacity. See Draw.</summary>
-    private void DrawItem(Graphics graphics, int i, Color state, float opacity)
+    private void DrawItem(Graphics graphics, int i, Color state, bool current, float opacity)
     {
-        Color Faded(int alpha) => Color.FromArgb((int)(alpha * Math.Clamp(opacity, 0f, 1f)), state.R, state.G, state.B);
+        Color Faded(float strength) =>
+            Color.FromArgb((int)(state.A * strength * Math.Clamp(opacity, 0f, 1f)), state.R, state.G, state.B);
 
-        var current = state == CurrentColour;
-        var bright = Faded(255);
-        var dim = Faded(UpAlpha);
+        var bright = Faded(1f);
+        var dim = Faded(UpStrength);
         var item = Items[i];
-        var line = Faded(current ? 230 : 150);
+        var line = Faded(1f);
         var points = new Vector2[PathSamples];
 
         for (var k = 0; k < PathSamples; k++)
@@ -228,22 +228,16 @@ internal sealed class ClickPlan
     }
 
     /// <summary>
-    /// The click being made and the way to it: AutoExpedition's green, its Next explosive colour's default, so the plan
-    /// reads as that plugin's markings do.
+    /// The colours a plan is drawn in, from ExileInput2's settings: the click being made and the way to it, the clicks to
+    /// come, and the clicks made as they fade. Each colour's own alpha is its strength. See ExileInput2Settings.
     /// </summary>
-    private static readonly Color CurrentColour = Color.FromArgb(255, 90, 255, 120);
-
-    /// <summary>The clicks still to come and their ways: AutoExpedition's yellow, its Later explosives colour's default.</summary>
-    private static readonly Color LaterColour = Color.FromArgb(255, 255, 210, 80);
-
-    /// <summary>The clicks made, fading out. See DoneFadeFor.</summary>
-    private static readonly Color DoneColour = Color.FromArgb(255, 170, 170, 170);
+    internal readonly record struct Colours(Color Current, Color Later, Color Done);
 
     /// <summary>
-    /// How strong a mark of something coming up - a button, a modifier - and a click's number are, against the full
-    /// strength of something going down, in the same colour.
+    /// How strong a mark of something coming up - a button, a modifier - and a click's number are, as a share of the
+    /// colour's own: fainter than something going down, in the same colour.
     /// </summary>
-    private const int UpAlpha = 160;
+    private const float UpStrength = 0.63f;
 
     /// <summary>C for ctrl, S for shift, A for alt; "" for none.</summary>
     private static string ModifierLetters(IReadOnlyList<Keys> modifiers)

@@ -106,6 +106,17 @@ public class ExileInput2Settings : ISettings
     [Menu("Modifier Timing Longest (ms)", "The longest time a modifier goes down before a click and up after it.")]
     public RangeNode<int> ModifierTimingLongestMs { get; set; } = new RangeNode<int>(100, 0, 300);
 
+    [Menu("Planned Click Colour: Current",
+        "When a plugin asks for its planned clicks to be drawn: the click being made and the\n" +
+        "way to it. Marks of a button or key coming up, and the numbers, are drawn fainter.")]
+    public ColorNode PlanCurrentColour { get; set; } = new ColorNode(System.Drawing.Color.FromArgb(255, 90, 255, 120));
+
+    [Menu("Planned Click Colour: Later", "The clicks still to come, and the ways to them.")]
+    public ColorNode PlanLaterColour { get; set; } = new ColorNode(System.Drawing.Color.FromArgb(255, 255, 210, 80));
+
+    [Menu("Planned Click Colour: Done", "The clicks made, as they fade out over a second.")]
+    public ColorNode PlanDoneColour { get; set; } = new ColorNode(System.Drawing.Color.FromArgb(255, 170, 170, 170));
+
     [Menu("Drop An Idle Claim After (s)",
         "How long a plugin may hold the cursor without using it before the claim is taken off it.\n\n" +
         "There is one cursor and there may be several plugins, so one takes it at a time. A plugin " +
@@ -348,6 +359,9 @@ public class ExileInput2Settings : ISettings
         ModifierTimingShortestMs.Value = defaults.ModifierTimingShortestMs.Value;
         ModifierTimingUsualMs.Value = defaults.ModifierTimingUsualMs.Value;
         ModifierTimingLongestMs.Value = defaults.ModifierTimingLongestMs.Value;
+        PlanCurrentColour.Value = defaults.PlanCurrentColour.Value;
+        PlanLaterColour.Value = defaults.PlanLaterColour.Value;
+        PlanDoneColour.Value = defaults.PlanDoneColour.Value;
     }
 
     /// <summary>A seed at random: a cryptographic draw, never nought, which means none.</summary>

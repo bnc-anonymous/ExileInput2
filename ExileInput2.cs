@@ -1121,11 +1121,13 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         _fading.RemoveAll(f => now - f.Since >= FadeFor);
 
         // A queue given up fades as a whole; one replaced draws only its clicks already made, which fade by their own time.
+        var colours = new ClickPlan.Colours(Settings.PlanCurrentColour.Value, Settings.PlanLaterColour.Value, Settings.PlanDoneColour.Value);
+
         foreach (var (plan, since, doneOnly) in _fading)
-            plan.Draw(Graphics, doneOnly ? 1f : 1f - (float)((now - since).TotalMilliseconds / FadeFor.TotalMilliseconds), doneOnly);
+            plan.Draw(Graphics, colours, doneOnly ? 1f : 1f - (float)((now - since).TotalMilliseconds / FadeFor.TotalMilliseconds), doneOnly);
 
         if (_lease.Holder is { } holder && _plans.TryGetValue(holder, out var current) && current.Show)
-            current.Draw(Graphics);
+            current.Draw(Graphics, colours);
     }
 
     public override void OnUnload()
