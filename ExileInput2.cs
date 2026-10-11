@@ -604,7 +604,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             for (var key = 0x07; key <= 0xFE; key++)
             {
                 if ((GetAsyncKeyState(key) & 0x8000) != 0)
+                {
+                    KeyWatch.NoteHeld(key);
                     Safe(() => ExileCore2.Input.KeyUp((Keys)key));
+                }
             }
         }
 

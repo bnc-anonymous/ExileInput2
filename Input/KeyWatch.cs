@@ -12,7 +12,7 @@ namespace ExileInput2;
 /// A low-level keyboard hook on a thread of its own, installed while watching or blocking and removed when neither. A
 /// key-down without the injected flag is the player's; keys this plugin sends carry the flag and pass. Watching queues
 /// the player's key-downs by virtual-key code for the next tick to read; blocking drops them before the game sees them.
-/// A key-up always passes, so no key is left down.
+/// A key-up always passes, so no key is left down. The keys still held when a block ends are pressed again. See Restore.
 /// </summary>
 internal static class KeyWatch
 {
@@ -22,6 +22,46 @@ internal static class KeyWatch
 
     /// <summary>Kept in a field so the delegate the hook calls is not collected while installed.</summary>
     private static readonly LowLevelKeyboardProc Proc = Hook;
+
+    /// <summary>
+    /// The keys the player is holding through a block: those let go when it began, and those pressed during it, less
+    /// any let go since - by virtual-key code. Pressed again when the block ends, so a walk on a held A goes on. Windows
+    /// cannot be asked instead: after the let-go its key state reads up, finger on the key or not. See Restore.
+    /// </summary>
+    private static readonly ConcurrentDictionary<int, byte> HeldThroughBlock = new();
+
+    /// <summary>
+    /// A key the block let go of while the player held it, for Restore to press again. See ExileInput2.BlockPlayerKeys.
+    /// The undirected Shift, Ctrl and Alt (0x10-0x12) are left out: the hook reports the sided codes (0xA0-0xA5), so a
+    /// physical release during the block would never take the undirected one off, and Restore would press it stuck.
+    /// The sided code, held at the same time, stands for it.
+    /// </summary>
+    public static void NoteHeld(int key)
+    {
+        if (key is < 0x10 or > 0x12)
+            HeldThroughBlock[key] = 0;
+    }
+
+    /// <summary>
+    /// Presses again every key the player is still holding as a block ends, so the game sees it held once more; the
+    /// player's own key-up lets it go as usual. Run once, by the hook's thread, when the block ends.
+    /// </summary>
+    private static void Restore()
+    {
+        foreach (var key in HeldThroughBlock.Keys)
+        {
+            try
+            {
+                ExileCore2.Input.KeyDown((System.Windows.Forms.Keys)key);
+            }
+            catch
+            {
+                // A key that would not go down again is no worse than the block it came from.
+            }
+        }
+
+        HeldThroughBlock.Clear();
+    }
 
     /// <summary>The player's key-downs since the last Drain, by virtual-key code.</summary>
     private static readonly ConcurrentQueue<int> Pressed = new();
@@ -88,6 +128,8 @@ internal static class KeyWatch
         if (hook == IntPtr.Zero)
             return;
 
+        var wasBlocking = false;
+
         try
         {
             while (true)
@@ -98,6 +140,14 @@ internal static class KeyWatch
                 while (PeekMessage(out _, IntPtr.Zero, 0, 0, PmRemove))
                 {
                 }
+
+                // A block that has just ended, by its time or by Block(0): the keys still held pressed again.
+                var blocking = Blocking;
+
+                if (wasBlocking && !blocking)
+                    Restore();
+
+                wasBlocking = blocking;
 
                 lock (Gate)
                 {
@@ -123,12 +173,24 @@ internal static class KeyWatch
 
             if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0)
             {
+                // Dropped, and remembered as held, for Restore.
                 if (Blocking)
+                {
+                    HeldThroughBlock[(int)info.VirtualKey] = 0;
                     return 1;
+                }
 
                 if (_watching)
                     Pressed.Enqueue((int)info.VirtualKey);
             }
+        }
+        else if (code >= 0 && (int)message is WmKeyUp or WmSysKeyUp && Blocking)
+        {
+            // Let go during the block: not pressed again when it ends. The key-up itself passes.
+            var info = Marshal.PtrToStructure<KeyHookInfo>(data);
+
+            if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0)
+                HeldThroughBlock.TryRemove((int)info.VirtualKey, out _);
         }
 
         return CallNextHookEx(IntPtr.Zero, code, message, data);
@@ -141,6 +203,8 @@ internal static class KeyWatch
     private const uint LlkhfLowerIlInjected = 0x02;
     private const int WmKeyDown = 0x0100;
     private const int WmSysKeyDown = 0x0104;
+    private const int WmKeyUp = 0x0101;
+    private const int WmSysKeyUp = 0x0105;
 
     private delegate IntPtr LowLevelKeyboardProc(int code, IntPtr message, IntPtr data);
 
