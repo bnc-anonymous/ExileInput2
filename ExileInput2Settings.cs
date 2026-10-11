@@ -113,6 +113,23 @@ public class ExileInput2Settings : ISettings
     [Menu("Modifier Timing Longest (ms)", "The longest time a modifier goes down before a click and up after it.")]
     public RangeNode<int> ModifierTimingLongestMs { get; set; } = new RangeNode<int>(100, 0, 300);
 
+    [Menu("Planned Clicks: Show Buttons",
+        "When a plugin asks for its planned clicks to be drawn: L or R at each click, for the\n" +
+        "left or right button - bright where it goes down, fainter beside it where it comes up.")]
+    public ToggleNode PlanShowButtons { get; set; } = new ToggleNode(true);
+
+    [Menu("Planned Clicks: Show Modifiers",
+        "C, S or A for ctrl, shift or alt: bright on the path where it goes down, fainter\n" +
+        "after the last click that holds it, where it comes up.")]
+    public ToggleNode PlanShowModifiers { get; set; } = new ToggleNode(true);
+
+    [Menu("Planned Clicks: Show Numbers", "Each click's place in the queue, above it.")]
+    public ToggleNode PlanShowNumbers { get; set; } = new ToggleNode(false);
+
+    [Menu("Planned Clicks: Fade Out",
+        "Clicks made, and a queue given up, fade out over a second. Off, they go at once.")]
+    public ToggleNode PlanFadeOut { get; set; } = new ToggleNode(true);
+
     [Menu("Planned Click Colour: Current",
         "When a plugin asks for its planned clicks to be drawn: the click being made and the\n" +
         "way to it. Marks of a button or key coming up, and the numbers, are drawn fainter.")]
@@ -375,6 +392,10 @@ public class ExileInput2Settings : ISettings
         ModifierTimingShortestMs.Value = defaults.ModifierTimingShortestMs.Value;
         ModifierTimingUsualMs.Value = defaults.ModifierTimingUsualMs.Value;
         ModifierTimingLongestMs.Value = defaults.ModifierTimingLongestMs.Value;
+        PlanShowButtons.Value = defaults.PlanShowButtons.Value;
+        PlanShowModifiers.Value = defaults.PlanShowModifiers.Value;
+        PlanShowNumbers.Value = defaults.PlanShowNumbers.Value;
+        PlanFadeOut.Value = defaults.PlanFadeOut.Value;
         PlanCurrentColour.Value = defaults.PlanCurrentColour.Value;
         PlanLaterColour.Value = defaults.PlanLaterColour.Value;
         PlanDoneColour.Value = defaults.PlanDoneColour.Value;

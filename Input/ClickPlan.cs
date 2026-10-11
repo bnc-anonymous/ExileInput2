@@ -152,7 +152,7 @@ internal sealed class ClickPlan
     /// to 0 over a second once it is given up. Clicks already made fade out over DoneFadeFor from when they were made. See
     /// the class and ExileInput2.Render.
     /// </summary>
-    public void Draw(Graphics graphics, Colours colours, float opacity = 1f, bool doneOnly = false)
+    public void Draw(Graphics graphics, Colours colours, Marks marks, float opacity = 1f, bool doneOnly = false)
     {
         var first = Current != null ? Next - 1 : Next;
         var now = DateTime.UtcNow;
@@ -162,21 +162,21 @@ internal sealed class ClickPlan
 
         for (var i = 0; i < Math.Max(0, first); i++)
         {
-            if (!_doneAt.TryGetValue(i, out var at) || now - at >= DoneFadeFor)
+            if (!marks.Fade || !_doneAt.TryGetValue(i, out var at) || now - at >= DoneFadeFor)
                 continue;
 
-            DrawItem(graphics, i, colours.Done, false, opacity * (1f - (float)((now - at).TotalMilliseconds / DoneFadeFor.TotalMilliseconds)));
+            DrawItem(graphics, i, colours.Done, marks, false, opacity * (1f - (float)((now - at).TotalMilliseconds / DoneFadeFor.TotalMilliseconds)));
         }
 
         if (doneOnly)
             return;
 
         for (var i = Math.Max(0, first); i < Items.Count; i++)
-            DrawItem(graphics, i, i == first ? colours.Current : colours.Later, i == first, opacity);
+            DrawItem(graphics, i, i == first ? colours.Current : colours.Later, marks, i == first, opacity);
     }
 
     /// <summary>One click's path and marks in its state's colour, at this opacity. See Draw.</summary>
-    private void DrawItem(Graphics graphics, int i, Color state, bool current, float opacity)
+    private void DrawItem(Graphics graphics, int i, Color state, Marks marks, bool current, float opacity)
     {
         Color Faded(float strength) =>
             Color.FromArgb((int)(state.A * strength * Math.Clamp(opacity, 0f, 1f)), state.R, state.G, state.B);
@@ -192,7 +192,7 @@ internal sealed class ClickPlan
 
         graphics.DrawPolyLine(points, line, current ? 2f : 1.2f);
 
-        var modifier = ModifierLetters(item.Modifiers);
+        var modifier = marks.Modifiers ? ModifierLetters(item.Modifiers) : "";
 
         // The modifier going down, on the path where it does.
         if (item.LeadMs > 0 && modifier.Length > 0)
@@ -207,10 +207,14 @@ internal sealed class ClickPlan
         var step = new Vector2(size.X + 3f, 0f);
         var button = item.Right ? "R" : "L";
 
-        Letter(graphics, button, item.To, bright);
-        Letter(graphics, button, item.To + step, dim);
-        graphics.DrawText($"{i + 1}", item.To - new Vector2(0f, size.Y + 2f), dim,
-            ExileCore2.Shared.Enums.FontAlign.Center | ExileCore2.Shared.Enums.FontAlign.VerticalCenter);
+        if (marks.Buttons)
+        {
+            Letter(graphics, button, item.To, bright);
+            Letter(graphics, button, item.To + step, dim);
+        }
+
+        if (marks.Numbers)
+            Letter(graphics, $"{i + 1}", item.To - new Vector2(0f, size.Y + 2f), dim);
 
         // The modifier coming up, after the last click that holds it.
         var last = i == Items.Count - 1 || !Items[i + 1].Carried;
@@ -232,6 +236,12 @@ internal sealed class ClickPlan
     /// come, and the clicks made as they fade. Each colour's own alpha is its strength. See ExileInput2Settings.
     /// </summary>
     internal readonly record struct Colours(Color Current, Color Later, Color Done);
+
+    /// <summary>
+    /// Which marks a plan is drawn with, from ExileInput2's settings: the button letters, the modifier letters, each
+    /// click's number, and whether clicks made and queues given up fade out or go at once. The paths always draw.
+    /// </summary>
+    internal readonly record struct Marks(bool Buttons, bool Modifiers, bool Numbers, bool Fade);
 
     /// <summary>
     /// How strong a mark of something coming up - a button, a modifier - and a click's number are, as a share of the
