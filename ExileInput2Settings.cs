@@ -168,15 +168,21 @@ public class ExileInput2Settings : ISettings
     /// one at random, Reset to defaults for the sliders, and each feel setting as used.
     /// </summary>
     [JsonIgnore]
-    [Menu("Seed",
+    [Menu("Seed")]
+    public CustomNode SeedUi { get; set; }
+
+    /// <summary>
+    /// The seed's help, shown on its own (?) beside the seed's buttons. Not given to the Menu attribute: ExileCore draws
+    /// that one after everything the node draws, below the values as used, where it reads as belonging to the last line.
+    /// </summary>
+    private const string SeedHelp =
         "This install's own seed. It shapes every move - where the aim wanders, how a path\n" +
         "bows - and moves each feel setting above from its slider: 10 to 20 per cent up or\n" +
         "down, Aim Within 10 per cent down to none, Shortest Move 5 per cent down to 20 up,\n" +
         "and each click timing up to 5 per cent either way. The values below are the ones\n" +
         "used. Drawn at random the first time the plugin starts.\n\n" +
         "Nought uses the sliders as they are. Reset to defaults puts the sliders back and\n" +
-        "leaves the seed alone.")]
-    public CustomNode SeedUi { get; set; }
+        "leaves the seed alone.";
 
     /// <summary>
     /// The settings the seed varies: how input looks, not how carefully it lands or when it stops. Arrived Within, Stop
@@ -295,6 +301,12 @@ public class ExileInput2Settings : ISettings
 
         if (ImGuiNET.ImGui.Button("Reset to defaults##exileInput2Reset"))
             ResetToDefaults();
+
+        ImGuiNET.ImGui.SameLine();
+        ImGuiNET.ImGui.TextDisabled("(?)");
+
+        if (ImGuiNET.ImGui.IsItemHovered())
+            ImGuiNET.ImGui.SetTooltip(SeedHelp);
 
         ImGuiNET.ImGui.Spacing();
         ImGuiNET.ImGui.TextDisabled(Seed == 0 ? "With seed 0, the sliders as they are:" : "With this seed, as used:");
