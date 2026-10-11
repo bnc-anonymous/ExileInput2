@@ -254,6 +254,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // A journey waits while a click's button is still down. See Buttons.Press.
         pointer.MoveDelayMs ??= () => Buttons.MsUntilPressUp;
+        pointer.ModifierLeadMs ??= () => HumanTiming.Ms(Settings.UsedModifierTiming);
 
         // The feel settings as the seed moves them; the rest as set. See ExileInput2Settings.Varied.
         pointer.SpreadPercent = Settings.UsedSpreadPercent;
@@ -749,6 +750,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         {
             _strokes[who] = stroke = new Stroke
             {
+                HoldMs = () => HumanTiming.Ms(Settings.UsedClickHold),
+                ModifierMs = () => HumanTiming.Ms(Settings.UsedModifierTiming),
+
                 // The keys coming up is the end of the gesture, so it is also the moment the rest
                 // of the bookkeeping about them stops being true. Wired here rather than inside
                 // the stroke because a stroke that reached into the pointer would be two things.
@@ -825,7 +829,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         {
             var keys = KeysFor(who);
 
-            Buttons.AfterPress(HumanTiming.Ms(), () =>
+            Buttons.AfterPress(HumanTiming.Ms(Settings.UsedModifierTiming), () =>
             {
                 keys.ReleaseAll();
                 Buttons.Release();

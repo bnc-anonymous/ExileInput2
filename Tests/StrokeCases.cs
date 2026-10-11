@@ -247,7 +247,7 @@ internal static class StrokeCases
         {
             var now = TimeSpan.Zero;
             var keys = new FakeButtons { EverDown = c.Down, State = c.Readable, Now = () => now };
-            var stroke = new Stroke(keys) { Now = () => now, TimingMs = () => TimingMs };
+            var stroke = new Stroke(keys) { Now = () => now, HoldMs = () => TimingMs, ModifierMs = () => TimingMs };
 
             int? clickedAt = null;
             int? releasedAt = null;

@@ -79,8 +79,14 @@ internal sealed class Stroke
     /// <summary>When the button was seen up after the click; null until it is.</summary>
     private TimeSpan? _buttonUpAt;
 
-    /// <summary>One draw of a click's timings, in milliseconds. HumanTiming's by default; fixed by the tests.</summary>
-    internal Func<int> TimingMs { get; set; } = HumanTiming.Ms;
+    /// <summary>One draw of how long the button is held, in milliseconds. The Click Hold settings; fixed by the tests.</summary>
+    internal Func<int> HoldMs { get; set; } = () => HumanTiming.Ms((HumanTiming.Least, HumanTiming.Usual, HumanTiming.Most));
+
+    /// <summary>
+    /// One draw of a modifier's lead before the click or release after the button, in milliseconds. The Modifier Timing
+    /// settings; fixed by the tests.
+    /// </summary>
+    internal Func<int> ModifierMs { get; set; } = () => HumanTiming.Ms((HumanTiming.Least, HumanTiming.Usual, HumanTiming.Most));
 
     public Stroke(IButtons keys = null) => _keys = keys ?? new RealButtons();
 
@@ -118,7 +124,7 @@ internal sealed class Stroke
 
         if (!Modifier.Any(modifiers))
         {
-            _keys.Press(right, TimingMs());
+            _keys.Press(right, HoldMs());
             return true;
         }
 
@@ -134,7 +140,7 @@ internal sealed class Stroke
             _phase = Phase.Settling;
             _right = right;
             _at = Reading;
-            _leadMs = TimingMs();
+            _leadMs = ModifierMs();
         }
 
         // Every requested modifier, not just control. This used to strike immediately whenever
@@ -189,11 +195,11 @@ internal sealed class Stroke
 
     private bool Strike()
     {
-        _keys.Press(_right, TimingMs());
+        _keys.Press(_right, HoldMs());
 
         _phase = Phase.Letting;
         _at = Reading;
-        _releaseMs = TimingMs();
+        _releaseMs = ModifierMs();
         _buttonUpAt = null;
 
         return true;

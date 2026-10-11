@@ -83,6 +83,29 @@ public class ExileInput2Settings : ISettings
         "mouse stops it.")]
     public RangeNode<int> ArriveTimeoutMs { get; set; } = new RangeNode<int>(1500, 100, 10000);
 
+    [Menu("Click Hold Shortest (ms)",
+        "The shortest a mouse button is held down for a click. Each click's hold is drawn\n" +
+        "afresh between Shortest and Longest, most often near Usual.")]
+    public RangeNode<int> ClickHoldShortestMs { get; set; } = new RangeNode<int>(50, 0, 300);
+
+    [Menu("Click Hold Usual (ms)", "The most common time a mouse button is held down for a click.")]
+    public RangeNode<int> ClickHoldUsualMs { get; set; } = new RangeNode<int>(80, 0, 300);
+
+    [Menu("Click Hold Longest (ms)", "The longest a mouse button is held down for a click.")]
+    public RangeNode<int> ClickHoldLongestMs { get; set; } = new RangeNode<int>(100, 0, 300);
+
+    [Menu("Modifier Timing Shortest (ms)",
+        "The shortest time ctrl, shift or alt goes down before a click - on the way, while\n" +
+        "the cursor is still moving - and comes up after the button. Each is drawn afresh\n" +
+        "between Shortest and Longest, most often near Usual.")]
+    public RangeNode<int> ModifierTimingShortestMs { get; set; } = new RangeNode<int>(50, 0, 300);
+
+    [Menu("Modifier Timing Usual (ms)", "The most common time a modifier goes down before a click and up after it.")]
+    public RangeNode<int> ModifierTimingUsualMs { get; set; } = new RangeNode<int>(80, 0, 300);
+
+    [Menu("Modifier Timing Longest (ms)", "The longest time a modifier goes down before a click and up after it.")]
+    public RangeNode<int> ModifierTimingLongestMs { get; set; } = new RangeNode<int>(100, 0, 300);
+
     [Menu("Drop An Idle Claim After (s)",
         "How long a plugin may hold the cursor without using it before the claim is taken off it.\n\n" +
         "There is one cursor and there may be several plugins, so one takes it at a time. A plugin " +
@@ -148,7 +171,8 @@ public class ExileInput2Settings : ISettings
     [Menu("Seed",
         "This install's own seed. It shapes every move - where the aim wanders, how a path\n" +
         "bows - and moves each feel setting above 10 to 20 per\n" +
-        "cent up or down from its slider; the values below are the ones used. Drawn at\n" +
+        "cent up or down from its slider, and each click timing up to 5 per cent; the\n" +
+        "values below are the ones used. Drawn at\n" +
         "random the first time the plugin starts.\n\n" +
         "Nought uses the sliders as they are. Reset to defaults puts the sliders back and\n" +
         "leaves the seed alone.")]
@@ -198,6 +222,40 @@ public class ExileInput2Settings : ISettings
 
     internal int UsedArcPercent => Used(3);
 
+    /// <summary>
+    /// How far the seed moves one click timing: up to 5 per cent either way, the same for the same seed and timing every
+    /// time - less than the feel settings' 10 to 20, as these are already drawn afresh for every click. One for nought.
+    /// </summary>
+    internal static float TimingSeedFactor(int seed, int which)
+    {
+        if (seed == 0)
+            return 1f;
+
+        var draw = new System.Random(unchecked(seed * 31 + (which + 101) * 7919));
+
+        return (float)(1d + (draw.NextDouble() * 2d - 1d) * 0.05);
+    }
+
+    /// <summary>One click timing as used: its slider moved by the seed, rounded, within the slider's range.</summary>
+    private static int UsedTiming(RangeNode<int> node, int seed, int which) =>
+        System.Math.Clamp((int)System.Math.Round(node.Value * TimingSeedFactor(seed, which)), node.Min, node.Max);
+
+    /// <summary>Three timings as used, put in order whatever the sliders say: shortest, usual, longest.</summary>
+    private (int Least, int Usual, int Most) UsedSpread(RangeNode<int> shortest, RangeNode<int> usual, RangeNode<int> longest, int first)
+    {
+        var values = new[] { UsedTiming(shortest, Seed, first), UsedTiming(usual, Seed, first + 1), UsedTiming(longest, Seed, first + 2) };
+
+        System.Array.Sort(values);
+        return (values[0], values[1], values[2]);
+    }
+
+    /// <summary>How long a mouse button is held for a click, as used. See HumanTiming.</summary>
+    internal (int Least, int Usual, int Most) UsedClickHold => UsedSpread(ClickHoldShortestMs, ClickHoldUsualMs, ClickHoldLongestMs, 0);
+
+    /// <summary>How long a modifier is down before a click and after its button, as used. See HumanTiming.</summary>
+    internal (int Least, int Usual, int Most) UsedModifierTiming =>
+        UsedSpread(ModifierTimingShortestMs, ModifierTimingUsualMs, ModifierTimingLongestMs, 3);
+
     private void DrawSeed()
     {
         var seed = Seed;
@@ -228,6 +286,13 @@ public class ExileInput2Settings : ISettings
             ImGuiNET.ImGui.Text($"  {name}: {Used(i)}" +
                                 (Seed == 0 ? "" : $"   (slider {node.Value}, {(change >= 0 ? "+" : "")}{change:0}%)"));
         }
+
+        var hold = UsedClickHold;
+        var modifier = UsedModifierTiming;
+
+        ImGuiNET.ImGui.Text($"  Click Hold (ms): {hold.Least} / {hold.Usual} / {hold.Most}" +
+                            (Seed == 0 ? "" : "   (shortest / usual / longest, each up to 5% from its slider)"));
+        ImGuiNET.ImGui.Text($"  Modifier Timing (ms): {modifier.Least} / {modifier.Usual} / {modifier.Most}");
     }
 
     /// <summary>Every slider and switch back to its default. The seed is left as it is.</summary>
@@ -244,6 +309,12 @@ public class ExileInput2Settings : ISettings
         StopTolerancePx.Value = defaults.StopTolerancePx.Value;
         ArriveTimeoutMs.Value = defaults.ArriveTimeoutMs.Value;
         ClaimExpirySeconds.Value = defaults.ClaimExpirySeconds.Value;
+        ClickHoldShortestMs.Value = defaults.ClickHoldShortestMs.Value;
+        ClickHoldUsualMs.Value = defaults.ClickHoldUsualMs.Value;
+        ClickHoldLongestMs.Value = defaults.ClickHoldLongestMs.Value;
+        ModifierTimingShortestMs.Value = defaults.ModifierTimingShortestMs.Value;
+        ModifierTimingUsualMs.Value = defaults.ModifierTimingUsualMs.Value;
+        ModifierTimingLongestMs.Value = defaults.ModifierTimingLongestMs.Value;
     }
 
     /// <summary>A seed at random: a cryptographic draw, never nought, which means none.</summary>

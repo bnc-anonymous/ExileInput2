@@ -324,6 +324,9 @@ internal sealed class MousePointer
     /// </summary>
     public Func<int> MoveDelayMs { get; set; }
 
+    /// <summary>One draw of how long before arrival a journey's modifier goes down. The Modifier Timing settings.</summary>
+    public Func<int> ModifierLeadMs { get; set; }
+
     /// <summary>Told when the journey presses its modifier, so somebody can release it later.</summary>
     public Action<Keys> OnModifier { get; set; }
 
@@ -686,7 +689,7 @@ internal sealed class MousePointer
         _journey += JourneyStep + (float)_rng.NextDouble() * JourneyStep;
 
         _modifiers = modifiers ?? [];
-        _modifierLeadMs = HumanTiming.Ms(_rng);
+        _modifierLeadMs = ModifierLeadMs?.Invoke() ?? HumanTiming.Ms(_rng);
         _modifiersDown = false;
 
         var delayMs = Math.Max(0, MoveDelayMs?.Invoke() ?? 0);
