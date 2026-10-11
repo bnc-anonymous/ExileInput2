@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using Graphics = ExileCore2.Graphics;
+using RectangleF = ExileCore2.Shared.RectangleF;
 using Vector2 = System.Numerics.Vector2;
 
 namespace ExileInput2;
@@ -25,8 +26,8 @@ internal sealed class ClickPlan
     /// One planned click: the journey to it - its drift, and the shortest move and time per root pixel it is timed with,
     /// kept so the move is made as planned whatever is set by then - and its timings.
     /// </summary>
-    internal sealed record Planned(Vector2 From, Vector2 To, float Drift, float MinMs, float MsPerRootPx, Travel Path, int LeadMs,
-        bool Carried, int HoldMs, int ReleaseMs, bool Right, Keys[] Modifiers);
+    internal sealed record Planned(RectangleF Rect, bool PointGiven, Vector2 From, Vector2 To, float Drift, float MinMs,
+        float MsPerRootPx, Travel Path, int LeadMs, bool Carried, int HoldMs, int ReleaseMs, bool Right, Keys[] Modifiers);
 
     public readonly List<Planned> Items = [];
 
@@ -39,35 +40,58 @@ internal sealed class ClickPlan
     public bool Show;
 
     /// <summary>
-    /// The queue for these points, from the cursor: each journey's drift taken from the pointer as it would have been,
-    /// its shortest move from minMsOf - each click's own, so a caller can time its first move unlike the rest - and its
-    /// modifier lead, button hold and modifier release drawn now. A click whose modifiers match the one before it carries
-    /// them over, with no lead of its own.
+    /// The queue for these clicks, from the cursor. Each lands on its point where one is given, or else where the pointer
+    /// would aim in its rectangle from the click before - staying put when already in it. Each journey's drift is taken
+    /// from the pointer as it would have been, its shortest move from minMsOf - each click's own, so a caller can time its
+    /// first move unlike the rest - and its modifier lead, button hold and modifier release drawn now. A click whose
+    /// modifiers match the one before it carries them over, with no lead of its own.
     /// </summary>
-    public static ClickPlan Make(MousePointer pointer, Vector2 cursor, IReadOnlyList<Vector2> points, IReadOnlyList<bool> rights,
-        Keys[] modifiers, bool show, Func<int> holdMs, Func<int> modifierMs, Func<int, float> minMsOf)
+    public static ClickPlan Make(MousePointer pointer, Vector2 cursor, IReadOnlyList<RectangleF> rects, IReadOnlyList<Vector2> points,
+        IReadOnlyList<bool> rights, IReadOnlyList<Keys[]> modifiers, bool show, Func<int> holdMs, Func<int> modifierMs,
+        Func<int, float> minMsOf)
     {
         var plan = new ClickPlan { Show = show };
         var from = cursor;
-        var mods = modifiers ?? Modifier.None;
+        var count = Math.Max(rects.Count, points.Count);
+        Keys[] before = Modifier.None;
 
-        for (var i = 0; i < points.Count; i++)
+        for (var i = 0; i < count; i++)
         {
-            var to = points[i];
+            var rect = i < rects.Count ? rects[i] : default;
+            var given = i < points.Count && !float.IsNaN(points[i].X) && !float.IsNaN(points[i].Y);
+            var to = given ? points[i]
+                : pointer.StayPut && MousePointer.Holds(rect, from) ? from
+                : pointer.PointIn(rect, from);
+            var mods = i < modifiers.Count && modifiers[i] != null ? modifiers[i] : Modifier.None;
             var drift = pointer.NextJourney();
             var minMs = minMsOf(i);
             var perRootPx = pointer.TravelMsPerRootPx;
             var path = perRootPx <= 0
                 ? new Travel(from, to, 1f, 0f, 0f, drift)
                 : new Travel(from, to, minMs, perRootPx, pointer.ArcPercent, drift);
-            var carried = i > 0 && Modifier.Any(mods);
+            var carried = i > 0 && Modifier.Any(mods) && SameKeys(mods, before);
 
-            plan.Items.Add(new Planned(from, to, drift, minMs, perRootPx, path, carried || !Modifier.Any(mods) ? 0 : modifierMs(),
-                carried, holdMs(), modifierMs(), i < rights.Count && rights[i], mods));
+            plan.Items.Add(new Planned(rect, given, from, to, drift, minMs, perRootPx, path,
+                carried || !Modifier.Any(mods) ? 0 : modifierMs(), carried, holdMs(), modifierMs(), i < rights.Count && rights[i], mods));
             from = to;
+            before = mods;
         }
 
         return plan;
+    }
+
+    private static bool SameKeys(IReadOnlyList<Keys> a, IReadOnlyList<Keys> b)
+    {
+        if (a.Count != b.Count)
+            return false;
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (Array.IndexOf((Keys[])b, a[i]) < 0)
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>The paths, clicks and modifiers from the click in hand on. See the class.</summary>

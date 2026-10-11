@@ -307,8 +307,9 @@ internal static class TravelCases
         // drawn for it. See ClickPlan.
         var planned = new MousePointer(null, new Random(20261011)) { MinTravelMs = 60f, TravelMsPerRootPx = 6f, ArcPercent = 7f };
         var planPoints = new[] { new Vector2(300f, 200f), new Vector2(360f, 210f), new Vector2(420f, 260f) };
-        var plan = ClickPlan.Make(planned, new Vector2(100f, 100f), planPoints, [false, true, false],
-            Modifier.Of(true, false, false), true, () => 64, () => 72, i => i == 0 ? 40f : 67f);
+        var ctrlOnly = Modifier.Of(true, false, false);
+        var plan = ClickPlan.Make(planned, new Vector2(100f, 100f), [], planPoints, [false, true, false],
+            [ctrlOnly, ctrlOnly, ctrlOnly], true, () => 64, () => 72, i => i == 0 ? 40f : 67f);
         var items = plan.Items;
         var leadsOk = items[0].LeadMs == 72 && !items[0].Carried && items.Skip(1).All(p => p.Carried && p.LeadMs == 0);
         var chainOk = items[0].From == new Vector2(100f, 100f) && items[1].From == planPoints[0] && items[2].From == planPoints[1];

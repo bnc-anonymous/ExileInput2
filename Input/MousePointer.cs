@@ -694,6 +694,17 @@ internal sealed class MousePointer
     /// Place, with the journey's drift and its modifier's lead given rather than drawn: for a planned click, so the
     /// journey made is the one drawn. See ClickPlan.
     /// </summary>
+    /// <summary>Aim, at a point planned ahead with its journey's drift, lead and timing given. See ClickPlan.</summary>
+    public void AimAlong(RectangleF rect, Vector2 target, Keys[] modifiers, float drift, int modifierLeadMs, float minMs,
+        float msPerRootPx)
+    {
+        _stayedAt = null;
+        PlaceAlong(target, modifiers, drift, modifierLeadMs, minMs, msPerRootPx);
+
+        // After Place, which resets it: the bound belongs to this target, not the last one.
+        _bound = BoundFor(rect, target);
+    }
+
     public void PlaceAlong(Vector2 client, Keys[] modifiers, float drift, int modifierLeadMs, float? minMs = null,
         float? msPerRootPx = null)
     {

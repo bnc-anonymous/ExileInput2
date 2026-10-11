@@ -113,8 +113,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // A queue of clicks asked for ahead of time, drawn on screen when show is set. Empty points drop it. See PlanClicks.
         b.SaveMethod("ExileInput2.PlanClicks",
-            (string who, Vector2[] points, bool[] rights, Keys[] modifiers, int[] shortestMoveMs, bool show) =>
-                PlanClicks(who, points, rights, modifiers, shortestMoveMs, show));
+            (string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs, bool show) =>
+                PlanClicks(who, rects, points, rights, modifiers, shortestMoveMs, show));
         b.SaveMethod("ExileInput2.Drift", (string who) => Drift(who));
         b.SaveMethod("ExileInput2.Aiming", (string who) => Aiming(who));
         b.SaveMethod("ExileInput2.Expected", (string who) => Expected(who));
@@ -311,7 +311,24 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         var pointer = PointerFor(who);
         var carried = CarryModifiers(who, modifiers);
 
-        // A planned queue moves to points; a move to a rectangle is not one of its clicks, so the queue is dropped.
+        // The queue's next click, where it was planned by its rectangle: the point, journey and lead planned for it. Any
+        // other rectangle drops the queue.
+        if (_plans.TryGetValue(who, out var plan) && plan.Next < plan.Items.Count && !plan.Items[plan.Next].PointGiven &&
+            plan.Items[plan.Next].Rect == rect)
+        {
+            var planned = plan.Items[plan.Next];
+
+            pointer.AimAlong(rect, planned.To, modifiers ?? Modifier.None, planned.Drift,
+                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx);
+            plan.Current = planned;
+            plan.Next++;
+
+            if (carried)
+                pointer.ModifiersAlreadyDown();
+
+            return true;
+        }
+
         _plans.Remove(who);
 
         pointer.Aim(rect, modifiers ?? Modifier.None);
@@ -533,7 +550,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // The queue's next point: the journey and lead drawn when it was planned, so the move made is the one drawn.
         // Anywhere else - a re-aim, a retry - drops the queue, and the caller plans again if it wants it drawn.
-        if (_plans.TryGetValue(who, out var plan) && plan.Next < plan.Items.Count && plan.Items[plan.Next].To == client)
+        if (_plans.TryGetValue(who, out var plan) && plan.Next < plan.Items.Count && plan.Items[plan.Next].PointGiven &&
+            plan.Items[plan.Next].To == client)
         {
             var planned = plan.Items[plan.Next];
 
@@ -1039,18 +1057,22 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// click; a move to the next point uses its planned journey and timing, whatever is set by then, and anything else
     /// drops the queue. Empty points drop it now. Needs the cursor taken. See ClickPlan.
     /// </summary>
-    private bool PlanClicks(string who, Vector2[] points, bool[] rights, Keys[] modifiers, int[] shortestMoveMs, bool show)
+    private bool PlanClicks(string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs,
+        bool show)
     {
         if (!_lease.Held(who))
             return false;
 
-        if (points == null || points.Length == 0)
+        rects ??= [];
+        points ??= [];
+
+        if (rects.Length == 0 && points.Length == 0)
         {
             _plans.Remove(who);
             return true;
         }
 
-        _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), points, rights ?? [], modifiers ?? Modifier.None, show,
+        _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), rects, points, rights ?? [], modifiers ?? [], show,
             () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming),
             i => shortestMoveMs != null && i < shortestMoveMs.Length && shortestMoveMs[i] >= 0
                 ? shortestMoveMs[i] * ExileInput2Settings.SeedFactor(Settings.Seed, ExileInput2Settings.ShortestMoveIndex)

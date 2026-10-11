@@ -69,7 +69,7 @@ public sealed class ExileInput2Client
     private Func<string, Keys[], bool> _stopOnPlayerKeys;
     private Func<string, int, bool, Keys, bool> _blockPlayerKeys;
     private Func<string, bool> _keyBlockCancelled;
-    private Func<string, Vector2[], bool[], Keys[], int[], bool, bool> _planClicks;
+    private Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool> _planClicks;
     private Func<string, string> _stopped;
 
     private Func<string, string> _stopDetail;
@@ -172,7 +172,7 @@ public sealed class ExileInput2Client
             _stopOnPlayerKeys = b.GetMethod<Func<string, Keys[], bool>>("ExileInput2.StopOnPlayerKeys");
             _blockPlayerKeys = b.GetMethod<Func<string, int, bool, Keys, bool>>("ExileInput2.BlockPlayerKeys");
             _keyBlockCancelled = b.GetMethod<Func<string, bool>>("ExileInput2.KeyBlockCancelled");
-            _planClicks = b.GetMethod<Func<string, Vector2[], bool[], Keys[], int[], bool, bool>>("ExileInput2.PlanClicks");
+            _planClicks = b.GetMethod<Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool>>("ExileInput2.PlanClicks");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
         }
@@ -469,17 +469,18 @@ public sealed class ExileInput2Client
     }
 
     /// <summary>
-    /// A queue of clicks at these client points, in order - a right click where rights says so, all with these
-    /// modifiers - planned now and, with show, drawn on screen: each path, an L or R where a button goes down (bright)
-    /// and comes up (dim), and C, S or A where a modifier does. Still move to each point and click in turn; a move to the
-    /// next point makes the journey drawn, and a move anywhere else drops the queue. Each move's shortest move is
-    /// shortestMoveMs's for it, -1 for ExileInput2's own, and holds whatever SetShortestMove says by the time it is made.
-    /// Empty points drop it. Needs the cursor taken. False from an ExileInput2 too old to have it.
+    /// A queue of clicks, in order, planned now and, with show, drawn on screen: each path, an L or R where a button goes
+    /// down (bright) and comes up (dim), and C, S or A where a modifier does. Each click is at its point where points
+    /// gives one (NaN for none), or else in its rectangle where ExileInput2 would aim; a right click where rights says so;
+    /// with its modifiers; and its move at shortestMoveMs's shortest move, -1 for ExileInput2's own. Still move to each
+    /// in turn - to the point, or to the rectangle where no point was given - and click; a move to the next one makes the
+    /// journey drawn, and anything else drops the queue. No clicks drops it. Needs the cursor taken. False from an
+    /// ExileInput2 too old to have it.
     /// </summary>
-    public bool PlanClicks(Vector2[] points, bool[] rights, Keys[] modifiers, int[] shortestMoveMs, bool show)
+    public bool PlanClicks(RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs, bool show)
     {
         Look();
-        return _planClicks?.Invoke(_me, points, rights, modifiers, shortestMoveMs, show) ?? false;
+        return _planClicks?.Invoke(_me, rects, points, rights, modifiers, shortestMoveMs, show) ?? false;
     }
 
     /// <summary>Presses and releases a key.</summary>
