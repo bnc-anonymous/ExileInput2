@@ -53,6 +53,25 @@ internal static class MouseBlock
         }
     }
 
+    /// <summary>
+    /// Installs the hook without blocking anything, for a key block whose cancel key is a mouse button: the hook stays
+    /// while KeyWatch blocks, and drops and reports that button's press. See KeyWatch.CancelKeyIsMouseButton.
+    /// </summary>
+    public static void Watch()
+    {
+        lock (Gate)
+        {
+            if (_thread is { IsAlive: true })
+                return;
+
+            _thread = new Thread(Run) { IsBackground = true, Name = "ExileInput2 mouse block" };
+            _thread.Start();
+        }
+    }
+
+    /// <summary>Whether the hook is wanted: a block, or a key block watching for a mouse button. See Watch.</summary>
+    private static bool Wanted => Blocking || KeyWatch.Blocking && KeyWatch.CancelKeyIsMouseButton;
+
     /// <summary>Ends any block now.</summary>
     public static void Stop() => Interlocked.Exchange(ref _untilTicks, 0);
 
@@ -79,7 +98,7 @@ internal static class MouseBlock
 
                 lock (Gate)
                 {
-                    if (!Blocking)
+                    if (!Wanted)
                     {
                         _thread = null;
                         return;
@@ -95,10 +114,41 @@ internal static class MouseBlock
 
     private static IntPtr Hook(int code, IntPtr message, IntPtr data)
     {
+        // The key block's cancel key, when it is a mouse button: the press ends both blocks and is dropped. See
+        // KeyWatch.CancelBlock.
+        if (code >= 0 && KeyWatch.IsCancelKey(PressedButton((int)message, data)))
+        {
+            KeyWatch.CancelBlock();
+            return 1;
+        }
+
         if (code >= 0 && Blocking && Dropped((int)message, data))
             return 1;
 
         return CallNextHookEx(IntPtr.Zero, code, message, data);
+    }
+
+    /// <summary>
+    /// The virtual-key code of the button the player pressed - 1 left, 2 right, 4 middle, 5 X1, 6 X2 - or 0 for anything
+    /// else: a move, a release, the wheel, or this plugin's own input.
+    /// </summary>
+    private static int PressedButton(int message, IntPtr data)
+    {
+        if (message is not (WmLButtonDown or WmRButtonDown or WmMButtonDown or WmXButtonDown))
+            return 0;
+
+        var info = Marshal.PtrToStructure<MouseHookInfo>(data);
+
+        if ((info.Flags & (LlmhfInjected | LlmhfLowerIlInjected)) != 0)
+            return 0;
+
+        return message switch
+        {
+            WmLButtonDown => 1,
+            WmRButtonDown => 2,
+            WmMButtonDown => 4,
+            _ => (info.MouseData >> 16) switch { 1 => 5, 2 => 6, _ => 0 },
+        };
     }
 
     /// <summary>Whether a mouse event is the player's movement, press or wheel, as opposed to a release or this plugin's.</summary>

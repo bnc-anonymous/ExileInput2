@@ -102,6 +102,26 @@ internal static class KeyWatch
     /// <summary>Set by the hook when the player's press of the cancel key ended a block. See TakeBlockCancelled.</summary>
     private static volatile bool _blockCancelled;
 
+    /// <summary>
+    /// Whether the cancel key is a mouse button - left, right, middle, X1 or X2 (virtual-key 1, 2, 4, 5, 6) - which this
+    /// keyboard hook never sees; MouseBlock's hook watches for it instead, for as long as the key block lasts.
+    /// </summary>
+    public static bool CancelKeyIsMouseButton => _cancelKey is 1 or 2 or 4 or 5 or 6;
+
+    /// <summary>Whether a block is on and this virtual-key code is its cancel key.</summary>
+    public static bool IsCancelKey(int key) => _cancelKey != 0 && key == _cancelKey && Blocking;
+
+    /// <summary>
+    /// The player's press of the cancel key: the key block and the mouse block end now, and TakeBlockCancelled reports
+    /// it. Called from either hook. Held keys are pressed again by Run as the block ends, as for any other end.
+    /// </summary>
+    public static void CancelBlock()
+    {
+        Interlocked.Exchange(ref _blockUntil, 0);
+        MouseBlock.Stop();
+        _blockCancelled = true;
+    }
+
     /// <summary>Whether the player ended the last block with the cancel key, cleared by the read.</summary>
     public static bool TakeBlockCancelled()
     {
@@ -127,6 +147,10 @@ internal static class KeyWatch
             }
 
             Interlocked.Exchange(ref _blockUntil, ms == 0 ? 0 : Environment.TickCount64 + ms);
+
+            // A mouse button as the cancel key: the mouse hook is kept for the whole key block, not only its own.
+            if (ms > 0 && CancelKeyIsMouseButton)
+                MouseBlock.Watch();
 
             if (ms == 0 || _thread is { IsAlive: true })
                 return;
@@ -206,12 +230,8 @@ internal static class KeyWatch
                 {
                     // The cancel key: the player taking control back. Both blocks end now, in the hook, so this does
                     // not wait on the caller's next tick; the caller learns of it through TakeBlockCancelled.
-                    if (_cancelKey != 0 && (int)info.VirtualKey == _cancelKey)
-                    {
-                        Interlocked.Exchange(ref _blockUntil, 0);
-                        MouseBlock.Stop();
-                        _blockCancelled = true;
-                    }
+                    if (IsCancelKey((int)info.VirtualKey))
+                        CancelBlock();
 
                     return 1;
                 }
