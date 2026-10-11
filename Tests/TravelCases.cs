@@ -356,6 +356,50 @@ internal static class TravelCases
         Console.WriteLine("              a hand slows through a click, and with ctrl held a little movement during it is not a drag");
         Console.WriteLine();
 
+        // A planned journey after a planned one sets off from where the last put the cursor, even with the game's report
+        // of it lagging far behind: no snap back to the stale report. See MousePointer.PlaceAlong.
+        var now = TimeSpan.Zero;
+        var sends = new List<Vector2>();
+        var start = new Vector2(100f, 100f);
+
+        // The game's report of the cursor, six sends behind it, as a report trailing by several frames is.
+        Vector2 Reported() => sends.Count > 6 ? sends[^7] : start;
+
+        var lagging = new MousePointer(null, new Random(7)) { Cursor = Reported, Send = p => sends.Add(p), Clock = () => now };
+        var firstTo = new Vector2(200f, 150f);
+        var secondTo = new Vector2(260f, 150f);
+
+        lagging.PlaceAlong(firstTo, Modifier.None, 1f, 60, 60f, 6f, new Vector2(140f, 120f), new Vector2(180f, 145f));
+
+        for (var k = 0; k < 40; k++)
+        {
+            now += TimeSpan.FromMilliseconds(8);
+            lagging.Step();
+        }
+
+        var firstLanded = sends.Count > 0 && Vector2.Distance(sends[^1], firstTo) < 0.5f;
+        var before = sends.Count;
+        var stale = Reported();
+
+        lagging.PlaceAlong(secondTo, Modifier.None, 2f, 60, 60f, 6f, new Vector2(220f, 150f), new Vector2(245f, 150f));
+        now += TimeSpan.FromMilliseconds(8);
+        lagging.Step();
+
+        var nextSend = sends.Count > before ? sends[before] : stale;
+        var noSnap = sends.Count > before && Vector2.Distance(nextSend, firstTo) < 10f;
+        var lagOk = firstLanded && noSnap && lagging.Stopped == StopReason.None && Vector2.Distance(stale, firstTo) > 10f;
+
+        if (!lagOk)
+            failed++;
+
+        Console.WriteLine($"{(lagOk ? "  ok  " : "FAIL  ")}12 A planned journey after a planned one sets off from the last put, not the lagging report");
+        Console.WriteLine("        want  the first landed; the second's first step near where the first left the cursor");
+        Console.WriteLine($"        got   first landed {firstLanded}; second's first step ({nextSend.X:0},{nextSend.Y:0}), " +
+                          $"{Vector2.Distance(nextSend, firstTo):0.#}px from the last put, the report trailing at ({stale.X:0},{stale.Y:0})");
+        Console.WriteLine("        why   a planned journey is arrived before the game reports it, so the report can trail the cursor;");
+        Console.WriteLine("              setting off from it snapped the cursor back, a jump the player saw as a teleport");
+        Console.WriteLine();
+
         // The bow, journey to journey. A hand reaching between the same two places repeatedly takes
         // much the same path each time, and that path shifts over minutes - it does not curve left,
         // then hard right, then left again. Measured as how far the bow moves between consecutive

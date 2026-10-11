@@ -714,14 +714,23 @@ internal sealed class MousePointer
 
         // A planned journey - drift and timing given - counts as arrived once it has put the cursor on its point. See
         // Arrived.
+        var afterPlanned = _planned;
+
         _planned = minMs != null;
 
         // Where the cursor is now goes on the record before anything is sent, because for the next
         // frame or several that is what the game will still be reporting. Without it the very
         // first move of a session reads its own starting point as the player having moved the
         // mouse, and stops before it has gone anywhere.
-        var from = Where();
-        Remember(from);
+        var reported = Where();
+        Remember(reported);
+
+        // **A planned journey after a planned one sets off from where the last one put the cursor**, not from the game's
+        // report of it. A planned journey is arrived once it has put the cursor down, before the report catches up, so
+        // the report read here can trail the cursor - and a journey set off from it first snapped the cursor back there,
+        // a jump the player saw as a teleport now and then (2026-10-11). Only within LastPutCounts of that put, and only
+        // after a planned journey: anything else, the report is the answer.
+        var from = _planned && afterPlanned && _lastPut is { } put && Now() - _lastPutAt < LastPutCounts ? put : reported;
 
         Expected = client;
         Awaiting = true;
@@ -845,6 +854,8 @@ internal sealed class MousePointer
     private void Put(Vector2 client)
     {
         Remember(client);
+        _lastPut = client;
+        _lastPutAt = Now();
 
         if (Send != null)
         {
@@ -893,6 +904,14 @@ internal sealed class MousePointer
 
     /// <summary>Whether the journey in hand was planned ahead. See Arrived.</summary>
     private bool _planned;
+
+    /// <summary>Where this pointer last put the cursor, and when. See PlaceAlong.</summary>
+    private Vector2? _lastPut;
+
+    private TimeSpan _lastPutAt;
+
+    /// <summary>How recent the last put must be for a planned journey to set off from it rather than the report.</summary>
+    private static readonly TimeSpan LastPutCounts = TimeSpan.FromSeconds(1);
 
     /// <summary>The last journey's wait for a click's button before setting off, in milliseconds.</summary>
     public int LastMoveDelayMs { get; private set; }
