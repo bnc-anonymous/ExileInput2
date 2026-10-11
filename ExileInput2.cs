@@ -783,6 +783,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (_plans.TryGetValue(who, out var plan) && plan.Current is { } planned)
         {
             stroke.UseNext(planned.HoldMs, planned.ReleaseMs);
+            plan.MarkDone();
             plan.Current = null;
         }
 
@@ -1078,6 +1079,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             return true;
         }
 
+        // A queue replaced: its clicks already made go on fading out, the rest give way to the new one. See ClickPlan.Draw.
+        if (_plans.TryGetValue(who, out var replaced) && replaced.Show)
+            _fading.Add((replaced, DateTime.UtcNow, true));
+
         _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), rects, points, rights ?? [], modifiers ?? [], show,
             () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming),
             i => shortestMoveMs != null && i < shortestMoveMs.Length && shortestMoveMs[i] >= 0
@@ -1096,12 +1101,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// </summary>
     private void FadePlan(string who)
     {
-        if (who != null && _plans.Remove(who, out var plan) && plan.Show && plan.Next < plan.Items.Count)
-            _fading.Add((plan, DateTime.UtcNow));
+        if (who != null && _plans.Remove(who, out var plan) && plan.Show)
+            _fading.Add((plan, DateTime.UtcNow, false));
     }
 
     /// <summary>Queues given up, fading, with when. See FadePlan.</summary>
-    private readonly List<(ClickPlan Plan, DateTime Since)> _fading = new();
+    private readonly List<(ClickPlan Plan, DateTime Since, bool DoneOnly)> _fading = new();
 
     private static readonly TimeSpan FadeFor = TimeSpan.FromSeconds(1);
 
@@ -1115,8 +1120,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         _fading.RemoveAll(f => now - f.Since >= FadeFor);
 
-        foreach (var (plan, since) in _fading)
-            plan.Draw(Graphics, 1f - (float)((now - since).TotalMilliseconds / FadeFor.TotalMilliseconds));
+        // A queue given up fades as a whole; one replaced draws only its clicks already made, which fade by their own time.
+        foreach (var (plan, since, doneOnly) in _fading)
+            plan.Draw(Graphics, doneOnly ? 1f : 1f - (float)((now - since).TotalMilliseconds / FadeFor.TotalMilliseconds), doneOnly);
 
         if (_lease.Holder is { } holder && _plans.TryGetValue(holder, out var current) && current.Show)
             current.Draw(Graphics);

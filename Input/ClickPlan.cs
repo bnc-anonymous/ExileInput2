@@ -134,57 +134,88 @@ internal sealed class ClickPlan
         return true;
     }
 
+    /// <summary>When each click was made, by its place in the queue, so a done click fades rather than vanishes. See Draw.</summary>
+    private readonly Dictionary<int, DateTime> _doneAt = [];
+
+    /// <summary>How long a done click's path and marks take to fade out.</summary>
+    private static readonly TimeSpan DoneFadeFor = TimeSpan.FromSeconds(1);
+
+    /// <summary>Marks the click moved to as made, now: its drawing fades from here. See ExileInput2.Click.</summary>
+    public void MarkDone()
+    {
+        if (Current != null && Next > 0)
+            _doneAt[Next - 1] = DateTime.UtcNow;
+    }
+
     /// <summary>
     /// The paths, clicks and modifiers from the click in hand on, at this opacity: 1 while the queue is followed, falling
-    /// to 0 over a second once it is given up. See the class and ExileInput2.Render.
+    /// to 0 over a second once it is given up. Clicks already made fade out over DoneFadeFor from when they were made. See
+    /// the class and ExileInput2.Render.
     /// </summary>
-    public void Draw(Graphics graphics, float opacity = 1f)
+    public void Draw(Graphics graphics, float opacity = 1f, bool doneOnly = false)
+    {
+        var first = Current != null ? Next - 1 : Next;
+        var now = DateTime.UtcNow;
+
+        if (doneOnly)
+            first = Next;
+
+        for (var i = 0; i < Math.Max(0, first); i++)
+        {
+            if (!_doneAt.TryGetValue(i, out var at) || now - at >= DoneFadeFor)
+                continue;
+
+            DrawItem(graphics, i, false, opacity * (1f - (float)((now - at).TotalMilliseconds / DoneFadeFor.TotalMilliseconds)));
+        }
+
+        if (doneOnly)
+            return;
+
+        for (var i = Math.Max(0, first); i < Items.Count; i++)
+            DrawItem(graphics, i, i == first, opacity);
+    }
+
+    /// <summary>One click's path and marks, at this opacity. See Draw.</summary>
+    private void DrawItem(Graphics graphics, int i, bool current, float opacity)
     {
         Color Faded(Color colour) => Color.FromArgb((int)(colour.A * Math.Clamp(opacity, 0f, 1f)), colour.R, colour.G, colour.B);
 
         var bright = Faded(Bright);
         var dim = Faded(Dim);
+        var item = Items[i];
+        var line = Faded(current ? Color.FromArgb(230, Bright) : Color.FromArgb(110, 255, 255, 255));
+        var points = new Vector2[PathSamples];
 
-        var first = Current != null ? Next - 1 : Next;
+        for (var k = 0; k < PathSamples; k++)
+            points[k] = item.Path.At(k / (PathSamples - 1f));
 
-        for (var i = Math.Max(0, first); i < Items.Count; i++)
+        graphics.DrawPolyLine(points, line, current ? 2f : 1.2f);
+
+        var modifier = ModifierLetters(item.Modifiers);
+
+        // The modifier going down, on the path where it does.
+        if (item.LeadMs > 0 && modifier.Length > 0)
         {
-            var item = Items[i];
-            var current = i == first;
-            var line = Faded(current ? Color.FromArgb(230, Bright) : Color.FromArgb(110, 255, 255, 255));
-            var points = new Vector2[PathSamples];
-
-            for (var k = 0; k < PathSamples; k++)
-                points[k] = item.Path.At(k / (PathSamples - 1f));
-
-            graphics.DrawPolyLine(points, line, current ? 2f : 1.2f);
-
-            var modifier = ModifierLetters(item.Modifiers);
-
-            // The modifier going down, on the path where it does.
-            if (item.LeadMs > 0 && modifier.Length > 0)
-            {
-                var at = item.Path.At(item.Path.ProgressAt(Math.Max(0f, item.Path.Ms - item.LeadMs)));
-                Letter(graphics, modifier, at + new Vector2(0f, -12f), bright);
-            }
-
-            // The click: down bright on the point, up dim beside it, a letter's width and a little apart; its number
-            // centred above it.
-            var size = graphics.MeasureText("M");
-            var step = new Vector2(size.X + 3f, 0f);
-            var button = item.Right ? "R" : "L";
-
-            Letter(graphics, button, item.To, bright);
-            Letter(graphics, button, item.To + step, dim);
-            graphics.DrawText($"{i + 1}", item.To - new Vector2(0f, size.Y + 2f), dim,
-                ExileCore2.Shared.Enums.FontAlign.Center | ExileCore2.Shared.Enums.FontAlign.VerticalCenter);
-
-            // The modifier coming up, after the last click that holds it.
-            var last = i == Items.Count - 1 || !Items[i + 1].Carried;
-
-            if (last && modifier.Length > 0)
-                Letter(graphics, modifier, item.To + step * 2f, dim);
+            var at = item.Path.At(item.Path.ProgressAt(Math.Max(0f, item.Path.Ms - item.LeadMs)));
+            Letter(graphics, modifier, at + new Vector2(0f, -12f), bright);
         }
+
+        // The click: down bright on the point, up dim beside it, a letter's width and a little apart; its number
+        // centred above it.
+        var size = graphics.MeasureText("M");
+        var step = new Vector2(size.X + 3f, 0f);
+        var button = item.Right ? "R" : "L";
+
+        Letter(graphics, button, item.To, bright);
+        Letter(graphics, button, item.To + step, dim);
+        graphics.DrawText($"{i + 1}", item.To - new Vector2(0f, size.Y + 2f), dim,
+            ExileCore2.Shared.Enums.FontAlign.Center | ExileCore2.Shared.Enums.FontAlign.VerticalCenter);
+
+        // The modifier coming up, after the last click that holds it.
+        var last = i == Items.Count - 1 || !Items[i + 1].Carried;
+
+        if (last && modifier.Length > 0)
+            Letter(graphics, modifier, item.To + step * 2f, dim);
     }
 
     private const int PathSamples = 20;
