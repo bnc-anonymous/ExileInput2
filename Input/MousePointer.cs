@@ -697,17 +697,17 @@ internal sealed class MousePointer
     /// </summary>
     /// <summary>Aim, at a point planned ahead with its journey's drift, lead and timing given. See ClickPlan.</summary>
     public void AimAlong(RectangleF rect, Vector2 target, Keys[] modifiers, float drift, int modifierLeadMs, float minMs,
-        float msPerRootPx)
+        float msPerRootPx, Vector2? control1 = null, Vector2? control2 = null)
     {
         _stayedAt = null;
-        PlaceAlong(target, modifiers, drift, modifierLeadMs, minMs, msPerRootPx);
+        PlaceAlong(target, modifiers, drift, modifierLeadMs, minMs, msPerRootPx, control1, control2);
 
         // After Place, which resets it: the bound belongs to this target, not the last one.
         _bound = BoundFor(rect, target);
     }
 
     public void PlaceAlong(Vector2 client, Keys[] modifiers, float drift, int modifierLeadMs, float? minMs = null,
-        float? msPerRootPx = null)
+        float? msPerRootPx = null, Vector2? control1 = null, Vector2? control2 = null)
     {
         var shortest = minMs ?? MinTravelMs;
         var perRootPx = msPerRootPx ?? TravelMsPerRootPx;
@@ -757,6 +757,11 @@ internal sealed class MousePointer
         }
 
         _travel = new Travel(from, client, shortest, perRootPx, ArcPercent, drift, Clock, delayMs);
+
+        // A planned journey glides along the queue's curve. See Travel.Glide.
+        if (control1 is { } c1 && control2 is { } c2)
+            _travel.Glide(c1, c2, ClickPlan.CreepPx);
+
         LastMoveTravelMs = _travel.Ms;
     }
 

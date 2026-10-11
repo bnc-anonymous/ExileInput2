@@ -122,7 +122,110 @@ internal sealed class Travel
     public float ProgressAt(float ms) => Math.Clamp(ms / _ms, 0f, 1f);
 
     /// <summary>Where the cursor should be this instant.</summary>
-    public Vector2 Now() => At(Progress);
+    public Vector2 Now()
+    {
+        if (!_glide)
+            return At(Progress);
+
+        var elapsed = (float)Elapsed.TotalMilliseconds;
+
+        // Waiting on a click's button: creeping along the start of the way, CreepPx at most by the time it is up.
+        if (elapsed < 0f)
+            return Curve(_delayMs > 0f ? _creep * Math.Clamp(1f + elapsed / _delayMs, 0f, 1f) : 0f);
+
+        return Curve(_creep + (1f - _creep) * Eased(ProgressAt(elapsed)));
+    }
+
+    /// <summary>
+    /// Makes this a gliding journey, for a click planned in a queue: along a cubic curve through these two control
+    /// points - set so the way into one click already heads for the next, and the queue reads as one curve - creeping
+    /// up to creepPx along it while a click's button is still down, and arriving still moving at EndSpeed of its pace
+    /// rather than at rest. A click a little in motion is what a hand makes; the game takes it as a click, not a drag.
+    /// </summary>
+    public void Glide(Vector2 control1, Vector2 control2, float creepPx)
+    {
+        _glide = true;
+        _control1 = control1;
+        _control2 = control2;
+
+        // The curve's own parameter does not run evenly along it - near a control point it covers more ground - so
+        // the share crept is found by distance along the curve, not as creepPx over the length.
+        _creep = 0f;
+
+        if (Vector2.Distance(_from, _to) <= 1f || creepPx <= 0f)
+            return;
+
+        float low = 0f, high = MostCreep;
+
+        if (Vector2.Distance(_from, Curve(high)) <= creepPx)
+        {
+            _creep = high;
+            return;
+        }
+
+        for (var i = 0; i < 20; i++)
+        {
+            var mid = (low + high) / 2f;
+
+            if (Vector2.Distance(_from, Curve(mid)) < creepPx)
+                low = mid;
+            else
+                high = mid;
+        }
+
+        _creep = low;
+    }
+
+    private bool _glide;
+    private Vector2 _control1, _control2;
+
+    /// <summary>The share of the way crept while waiting on a click's button. See Glide.</summary>
+    private float _creep;
+
+    /// <summary>The most of a journey crept while waiting: on a short hop CreepPx would be much of the way.</summary>
+    private const float MostCreep = 0.15f;
+
+    /// <summary>
+    /// A gliding journey's speed into its click, as a share of its pace blended into the easing: smoothstep alone
+    /// arrives at rest. 0.2, so it arrives still moving at about the speed the next journey creeps at. Chosen, not
+    /// measured.
+    /// </summary>
+    internal const float EndSpeed = 0.2f;
+
+    /// <summary>How far along the way a fraction of the time is: smoothstep over skewed time, and for a gliding journey
+    /// blended with the time itself so it is not at rest at either end. See ApproachSkew and EndSpeed.</summary>
+    private float Eased(float t)
+    {
+        var u = MathF.Pow(Math.Clamp(t, 0f, 1f), ApproachSkew);
+        var smooth = u * u * (3f - 2f * u);
+
+        return _glide ? (1f - EndSpeed) * smooth + EndSpeed * u : smooth;
+    }
+
+    /// <summary>
+    /// The point a share of the way along the path: the cubic curve of a gliding journey, else the quadratic bow.
+    /// </summary>
+    private Vector2 Curve(float s)
+    {
+        s = Math.Clamp(s, 0f, 1f);
+
+        if (_glide)
+        {
+            var r = 1f - s;
+
+            return r * r * r * _from + 3f * r * r * s * _control1 + 3f * r * s * s * _control2 + s * s * s * _to;
+        }
+
+        // A quadratic bezier through a control point off the midpoint, which is the cheapest curve
+        // that starts and ends exactly where it must. The bow is doubled because a bezier only
+        // reaches half way to its control point.
+        var control = (_from + _to) / 2f + _bow * 2f;
+
+        var a = Vector2.Lerp(_from, control, s);
+        var b = Vector2.Lerp(control, _to, s);
+
+        return Vector2.Lerp(a, b, s);
+    }
 
     /// <summary>
     /// Where the cursor should be a given fraction of the way through.
@@ -131,24 +234,6 @@ internal sealed class Travel
     /// thing here that cannot be checked by looking at it - it is a few hundred milliseconds of
     /// cursor somewhere off screen - so the alternative to driving it by hand is not testing it.
     /// </summary>
-    public Vector2 At(float t)
-    {
-        t = Math.Clamp(t, 0f, 1f);
-
-        // Smoothstep over skewed time: still at both ends, quickest before the middle, slowest into the target. See
-        // ApproachSkew.
-        var u = MathF.Pow(t, ApproachSkew);
-        var eased = u * u * (3f - 2f * u);
-
-        // A quadratic bezier through a control point off the midpoint, which is the cheapest curve
-        // that starts and ends exactly where it must. The bow is doubled because a bezier only
-        // reaches half way to its control point.
-        var control = (_from + _to) / 2f + _bow * 2f;
-
-        var a = Vector2.Lerp(_from, control, eased);
-        var b = Vector2.Lerp(control, _to, eased);
-
-        return Vector2.Lerp(a, b, eased);
-    }
+    public Vector2 At(float t) => Curve(Eased(t));
 
 }

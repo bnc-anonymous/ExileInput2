@@ -315,6 +315,7 @@ internal static class TravelCases
         var chainOk = items[0].From == new Vector2(100f, 100f) && items[1].From == planPoints[0] && items[2].From == planPoints[1];
         var endsOk = items.All(p => Vector2.Distance(p.Path.At(1f), p.To) < 0.01f);
         var again = new Travel(items[1].From, items[1].To, 67f, 6f, 7f, items[1].Drift);
+        again.Glide(items[1].Control1, items[1].Control2, ClickPlan.CreepPx);
         var sameOk = Enumerable.Range(0, 11).All(k => Vector2.Distance(again.At(k / 10f), items[1].Path.At(k / 10f)) < 0.01f);
         var timedOk = items[0].MinMs == 40f && items[1].MinMs == 67f && items[2].MinMs == 67f;
         var planOk = leadsOk && chainOk && endsOk && sameOk && timedOk && items[1].Right && !items[0].Right;
@@ -329,6 +330,30 @@ internal static class TravelCases
                           $"made the same {sameOk}, each move's own shortest move {timedOk}");
         Console.WriteLine("        why   the plan is drawn on screen before it is made, so a journey made from it has to be the one");
         Console.WriteLine("              drawn; and a batch of ctrl+clicks holds ctrl through, as the player does");
+        Console.WriteLine();
+
+        // The glide: the way into a click heads where the way out leaves, the cursor is still moving as it reaches a
+        // click, and while the click before still holds its button it creeps no more than CreepPx. See Travel.Glide.
+        var into = items[0].Path.At(1f) - items[0].Path.At(0.97f);
+        var outOf = items[1].Path.At(0.03f) - items[1].Path.At(0f);
+        var turn = MathF.Acos(Math.Clamp(Vector2.Dot(Vector2.Normalize(into), Vector2.Normalize(outOf)), -1f, 1f)) * 180f / MathF.PI;
+        var lastStep = Vector2.Distance(items[1].Path.At(1f), items[1].Path.At(0.98f));
+        var held = TimeSpan.Zero;
+        var creeping = new Travel(items[1].From, items[1].To, 67f, 6f, 7f, items[1].Drift, () => held, 80f);
+        creeping.Glide(items[1].Control1, items[1].Control2, ClickPlan.CreepPx);
+        var startsAt = creeping.Now();
+        held = TimeSpan.FromMilliseconds(79);
+        var crept = Vector2.Distance(startsAt, creeping.Now());
+        var glideOk = turn < 35f && lastStep > 0.1f && crept > ClickPlan.CreepPx * 0.8f && crept <= ClickPlan.CreepPx + 0.05f;
+
+        if (!glideOk)
+            failed++;
+
+        Console.WriteLine($"{(glideOk ? "  ok  " : "FAIL  ")}11 A planned queue glides through its clicks rather than stopping at each");
+        Console.WriteLine($"        want  under 35 degrees between the way in and the way out; still moving at the click; at most {ClickPlan.CreepPx}px crept");
+        Console.WriteLine($"        got   {turn:0.#} degrees, {lastStep:0.##}px in the last 2% of the way, {crept:0.##}px crept while the button was down");
+        Console.WriteLine("        why   each journey ended at rest and the next began from rest, a corner and a stop at every click;");
+        Console.WriteLine("              a hand slows through a click, and with ctrl held a little movement during it is not a drag");
         Console.WriteLine();
 
         // The bow, journey to journey. A hand reaching between the same two places repeatedly takes

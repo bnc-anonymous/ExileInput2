@@ -323,7 +323,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             var planned = plan.Items[plan.Next];
 
             pointer.AimAlong(rect, planned.To, modifiers ?? Modifier.None, planned.Drift,
-                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx);
+                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx,
+                planned.Control1, planned.Control2);
             plan.Current = planned;
             plan.Next++;
 
@@ -560,7 +561,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             var planned = plan.Items[plan.Next];
 
             pointer.PlaceAlong(client, modifiers ?? Modifier.None, planned.Drift,
-                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx);
+                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx,
+                planned.Control1, planned.Control2);
             plan.Current = planned;
             plan.Next++;
         }

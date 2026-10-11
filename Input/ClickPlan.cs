@@ -27,7 +27,21 @@ internal sealed class ClickPlan
     /// kept so the move is made as planned whatever is set by then - and its timings.
     /// </summary>
     internal sealed record Planned(RectangleF Rect, bool PointGiven, Vector2 From, Vector2 To, float Drift, float MinMs,
-        float MsPerRootPx, Travel Path, int LeadMs, bool Carried, int HoldMs, int ReleaseMs, bool Right, Keys[] Modifiers);
+        float MsPerRootPx, Vector2 Control1, Vector2 Control2, Travel Path, int LeadMs, bool Carried, int HoldMs, int ReleaseMs,
+        bool Right, Keys[] Modifiers);
+
+    /// <summary>
+    /// How far a planned journey creeps while the click before it still holds its button. With ctrl held the game took a
+    /// click moved across a whole orb as a click, not a drag (the player, 2026-10-11), so a few pixels is safe. Chosen.
+    /// See Travel.Glide.
+    /// </summary>
+    public const float CreepPx = 6f;
+
+    /// <summary>
+    /// How far a curve's control points stray from the smooth curve through the queue, as a share of the way, on the
+    /// noise: a little, so the curve is a hand's rather than a draughtsman's. Chosen.
+    /// </summary>
+    private const float CurveWander = 0.08f;
 
     public readonly List<Planned> Items = [];
 
@@ -54,24 +68,50 @@ internal sealed class ClickPlan
         var from = cursor;
         var count = Math.Max(rects.Count, points.Count);
         Keys[] before = Modifier.None;
+        var landings = new List<Vector2>();
+
+        // Where each click lands first, so each journey's curve can head for the one after it.
+        for (var i = 0; i < count; i++)
+        {
+            var rect = i < rects.Count ? rects[i] : default;
+            var given = i < points.Count && !float.IsNaN(points[i].X) && !float.IsNaN(points[i].Y);
+
+            from = given ? points[i]
+                : pointer.StayPut && MousePointer.Holds(rect, from) ? from
+                : pointer.PointIn(rect, from);
+            landings.Add(from);
+        }
+
+        from = cursor;
 
         for (var i = 0; i < count; i++)
         {
             var rect = i < rects.Count ? rects[i] : default;
             var given = i < points.Count && !float.IsNaN(points[i].X) && !float.IsNaN(points[i].Y);
-            var to = given ? points[i]
-                : pointer.StayPut && MousePointer.Holds(rect, from) ? from
-                : pointer.PointIn(rect, from);
+            var to = landings[i];
             var mods = i < modifiers.Count && modifiers[i] != null ? modifiers[i] : Modifier.None;
             var drift = pointer.NextJourney();
+
+            // **One smooth curve through the queue**, a Catmull-Rom spline as cubic beziers: the way into each click heads
+            // for the next and the way out leaves in the same direction, so it slows through a click rather than turning a
+            // corner at it. A little off it, on the noise. See Travel.Glide.
+            var before2 = i > 0 ? (i > 1 ? landings[i - 2] : cursor) : from;
+            var after = i < count - 1 ? landings[i + 1] : to;
+            var line = to - from;
+            var across = line.Length() > 1f ? new Vector2(-line.Y, line.X) * CurveWander * PerlinNoise.Full(drift, 0f) : Vector2.Zero;
+            var control1 = from + (to - before2) / 6f + across;
+            var control2 = to - (after - from) / 6f + across;
             var minMs = minMsOf(i);
             var perRootPx = pointer.TravelMsPerRootPx;
             var path = perRootPx <= 0
                 ? new Travel(from, to, 1f, 0f, 0f, drift)
                 : new Travel(from, to, minMs, perRootPx, pointer.ArcPercent, drift);
+
+            if (perRootPx > 0)
+                path.Glide(control1, control2, CreepPx);
             var carried = i > 0 && Modifier.Any(mods) && SameKeys(mods, before);
 
-            plan.Items.Add(new Planned(rect, given, from, to, drift, minMs, perRootPx, path,
+            plan.Items.Add(new Planned(rect, given, from, to, drift, minMs, perRootPx, control1, control2, path,
                 carried || !Modifier.Any(mods) ? 0 : modifierMs(), carried, holdMs(), modifierMs(), i < rights.Count && rights[i], mods));
             from = to;
             before = mods;
