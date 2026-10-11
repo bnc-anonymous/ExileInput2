@@ -6,11 +6,13 @@ using System.Threading;
 namespace ExileInput2;
 
 /// <summary>
-/// Notices the player's own key presses, for a caller that asked to be stopped by them. See ExileInput2.StopOnPlayerKeys.
+/// Notices the player's own key presses, for a caller that asked to be stopped by them, and drops them for a caller that
+/// asked for them blocked. See ExileInput2.StopOnPlayerKeys and ExileInput2.BlockPlayerKeys.
 ///
-/// A low-level keyboard hook on a thread of its own, installed while watching and removed when not. It only watches:
-/// every key goes on to the game as before. A key-down without the injected flag is the player's; keys this plugin
-/// sends carry the flag and are not counted. Each is queued by virtual-key code for the next tick to read.
+/// A low-level keyboard hook on a thread of its own, installed while watching or blocking and removed when neither. A
+/// key-down without the injected flag is the player's; keys this plugin sends carry the flag and pass. Watching queues
+/// the player's key-downs by virtual-key code for the next tick to read; blocking drops them before the game sees them.
+/// A key-up always passes, so no key is left down.
 /// </summary>
 internal static class KeyWatch
 {
@@ -39,8 +41,34 @@ internal static class KeyWatch
         }
     }
 
-    /// <summary>Stops watching; the hook comes off within a few milliseconds.</summary>
+    /// <summary>Stops watching; the hook comes off within a few milliseconds, unless a block is on.</summary>
     public static void Stop() => _watching = false;
+
+    /// <summary>The longest one block of the player's keys may last.</summary>
+    public const int MostBlockMs = 3000;
+
+    /// <summary>Environment.TickCount64 at which the block of the player's keys ends; 0 when there is none.</summary>
+    private static long _blockUntil;
+
+    /// <summary>Whether the player's key-downs are being dropped now.</summary>
+    public static bool Blocking => Environment.TickCount64 < Interlocked.Read(ref _blockUntil);
+
+    /// <summary>Drops the player's key-downs for this long from now, replacing any block; 0 ends it.</summary>
+    public static void Block(int ms)
+    {
+        ms = Math.Clamp(ms, 0, MostBlockMs);
+
+        lock (Gate)
+        {
+            Interlocked.Exchange(ref _blockUntil, ms == 0 ? 0 : Environment.TickCount64 + ms);
+
+            if (ms == 0 || _thread is { IsAlive: true })
+                return;
+
+            _thread = new Thread(Run) { IsBackground = true, Name = "ExileInput2 key watch" };
+            _thread.Start();
+        }
+    }
 
     /// <summary>Takes every key-down queued since the last call.</summary>
     public static int[] Drain()
@@ -73,7 +101,7 @@ internal static class KeyWatch
 
                 lock (Gate)
                 {
-                    if (!_watching)
+                    if (!_watching && !Blocking)
                     {
                         _thread = null;
                         return;
@@ -89,12 +117,18 @@ internal static class KeyWatch
 
     private static IntPtr Hook(int code, IntPtr message, IntPtr data)
     {
-        if (code >= 0 && _watching && (int)message is WmKeyDown or WmSysKeyDown)
+        if (code >= 0 && (int)message is WmKeyDown or WmSysKeyDown)
         {
             var info = Marshal.PtrToStructure<KeyHookInfo>(data);
 
             if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0)
-                Pressed.Enqueue((int)info.VirtualKey);
+            {
+                if (Blocking)
+                    return 1;
+
+                if (_watching)
+                    Pressed.Enqueue((int)info.VirtualKey);
+            }
         }
 
         return CallNextHookEx(IntPtr.Zero, code, message, data);

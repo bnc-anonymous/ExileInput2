@@ -130,6 +130,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // See StopOnPlayerKeys.
         b.SaveMethod("ExileInput2.StopOnPlayerKeys", (string who, Keys[] except) => StopOnPlayerKeys(who, except));
 
+        // For a pickup that must not be walked away from: the player's held keys let go and their key presses dropped for
+        // this long, 0 to end it. See BlockPlayerKeys.
+        b.SaveMethod("ExileInput2.BlockPlayerKeys", (string who, int ms) => BlockPlayerKeys(who, ms));
+
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
             (string who, bool ctrl, bool shift, bool right) => Click(who, Modifier.Of(ctrl, shift), right));
@@ -583,6 +587,47 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         return true;
     }
 
+    /// <summary>
+    /// For up to KeyWatch.MostBlockMs: every key the player holds is let go, so a walk on WASD stops, and their key-downs
+    /// are dropped before the game sees them; key-ups and this plugin's own keys pass. 0 ends a block early. Does not need
+    /// the cursor, as a pickup's walk outlasts the click: the block runs to its time unless ended. Mouse buttons are not
+    /// let go. See KeyWatch.
+    /// </summary>
+    private bool BlockPlayerKeys(string who, int ms)
+    {
+        if (string.IsNullOrWhiteSpace(who))
+            return false;
+
+        if (ms > 0)
+        {
+            // Let go of what the player is holding: a held W keeps the character walking whatever arrives after it.
+            for (var key = 0x07; key <= 0xFE; key++)
+            {
+                if ((GetAsyncKeyState(key) & 0x8000) != 0)
+                    Safe(() => ExileCore2.Input.KeyUp((Keys)key));
+            }
+        }
+
+        KeyWatch.Block(ms);
+
+        return true;
+    }
+
+    private static void Safe(Action act)
+    {
+        try
+        {
+            act();
+        }
+        catch
+        {
+            // A key that would not come up is no worse than one that was not pressed.
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
+
     /// <summary>Callers stopped by the player's keys, with the keys that do not stop them. See StopOnPlayerKeys.</summary>
     private readonly Dictionary<string, HashSet<int>> _keyStops = new(StringComparer.OrdinalIgnoreCase);
 
@@ -894,6 +939,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         HeldKeys.ReleaseEverything();
         MouseBlock.Stop();
         KeyWatch.Stop();
+        KeyWatch.Block(0);
         _lease.Break();
     }
 }
