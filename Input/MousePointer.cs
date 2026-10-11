@@ -747,6 +747,7 @@ internal sealed class MousePointer
         var delayMs = Math.Max(0, MoveDelayMs?.Invoke() ?? 0);
 
         LastMoveDelayMs = delayMs;
+        LastMoveShape = shape ?? Travel.Flourish.None;
 
         // Nought means teleport, which is what this did before travel existed and is worth keeping
         // - it is the setting to reach for when something is going wrong and the question is
@@ -958,6 +959,9 @@ internal sealed class MousePointer
 
     /// <summary>The last journey's own length in time, its wait not counted, in milliseconds; 0 for a teleport.</summary>
     public float LastMoveTravelMs { get; private set; }
+
+    /// <summary>The last move's flourishes - a swoop's stretch, an overshoot - or none. For the caller's log.</summary>
+    public Travel.Flourish LastMoveShape { get; private set; } = Travel.Flourish.None;
 
     /// <summary>Forgets any outstanding move, for a machine giving up on what it was doing.</summary>
     public void Forget()

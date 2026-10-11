@@ -111,9 +111,14 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             (string who, Vector2 client, Keys[] modifiers) => MoveTo(who, client, modifiers));
         b.SaveMethod("ExileInput2.Arrived", (string who) => Arrived(who));
 
-        // The caller's last move: its wait for a click's button, and its own length, in milliseconds. See MousePointer.
+        // The caller's last move: its wait for a click's button, and its own length, in milliseconds; then its swoop's
+        // stretch of time (1 for none) and how far it overshot, in pixels (0 for none). See MousePointer.
         b.SaveMethod("ExileInput2.LastMoveTimes",
-            (string who) => new[] { (float)PointerFor(who).LastMoveDelayMs, PointerFor(who).LastMoveTravelMs });
+            (string who) => new[]
+            {
+                (float)PointerFor(who).LastMoveDelayMs, PointerFor(who).LastMoveTravelMs, PointerFor(who).LastMoveShape.DurationScale,
+                PointerFor(who).LastMoveShape.Overshoot.Length(),
+            });
 
         // A queue of clicks asked for ahead of time, drawn on screen when show is set. Empty points drop it. See PlanClicks.
         b.SaveMethod("ExileInput2.PlanClicks",

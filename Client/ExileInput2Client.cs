@@ -486,13 +486,20 @@ public sealed class ExileInput2Client
     }
 
     /// <summary>
-    /// The last move's wait for a click's button before setting off and its own length, in milliseconds; null from an
-    /// ExileInput2 too old to say.
+    /// The last move's wait for a click's button before setting off and its own length, in milliseconds, and whether it
+    /// swooped and how far it overshot, in pixels; null from an ExileInput2 too old to say. One that gives the times
+    /// alone reports no swoop and no overshoot.
     /// </summary>
-    public (float WaitMs, float TravelMs)? LastMoveTimes()
+    public (float WaitMs, float TravelMs, bool Swooped, float OvershotPx)? LastMoveTimes()
     {
         Look();
-        return _lastMoveTimes?.Invoke(_me) is [var wait, var travel] ? (wait, travel) : null;
+
+        return _lastMoveTimes?.Invoke(_me) switch
+        {
+            [var wait, var travel, var stretch, var overshot, ..] => (wait, travel, stretch > 1f, overshot),
+            [var wait, var travel, ..] => (wait, travel, false, 0f),
+            _ => null,
+        };
     }
 
     /// <summary>Presses and releases a key.</summary>
