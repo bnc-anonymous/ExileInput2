@@ -40,6 +40,12 @@ internal sealed record StopCase(string Name, StopReason Want, string Reason)
     /// <summary>Acknowledge the stop and try again, which only a release is allowed to do.</summary>
     public bool ResumeAfter { get; init; }
 
+    /// <summary>
+    /// The game reports a point partway between the two newest sends it could have seen, rather than one of them, as
+    /// it did on 2026-10-11 at 18:23: (620,278), on the line between sends (637,286) and (540,244) and 19 px from both.
+    /// </summary>
+    public bool ReportsBetweenSends { get; init; }
+
     /// <summary>Send once and have done with it, the way a zero travel time does.</summary>
     public bool Teleports { get; init; }
 
@@ -180,6 +186,25 @@ internal static class StopCases
             PlayerIgnoredMs = 32,
         },
 
+        new("14 The game reporting a point between two sends is not the player", StopReason.None,
+            "the cursor read on the straight line between two consecutive sends, 19 px from either, with nobody "
+            + "touching the mouse: the run stopped and a second reward window went unanswered (2026-10-11 18:23). "
+            + "Frames of 50ms make the sends far apart, as a stalled HUD frame does")
+        {
+            FrameMs = 50,
+            ReportsBetweenSends = true,
+        },
+
+        new("15 With sends far apart, a nudge off the path still counts", StopReason.PlayerMovedTheMouse,
+            "case 14 must not widen what reads as the pointer's own past its path: a hand that moves the cursor "
+            + "off the line between sends is still a hand")
+        {
+            FrameMs = 50,
+            ReportsBetweenSends = true,
+            PlayerMovesAtStep = 3,
+            PlayerMovesTo = new Vector2(260f, 940f),
+        },
+
         new("9  A new session does not inherit the last one's sends", StopReason.None,
             "moving the mouse BETWEEN two runs is not interference with either of them, and it is "
             + "what anybody does - place a bomb, reposition, place the next. Carried across the "
@@ -220,14 +245,19 @@ internal static class StopCases
                     return c.PlayerMovesTo;
 
                 var where = Start;
+                var before = Start;
 
                 foreach (var (at, point) in sent)
                 {
                     if (at <= frame - c.ReportLagFrames)
+                    {
+                        before = where;
                         where = point;
+                    }
                 }
 
-                return where;
+                // A third of the way back from the newest seen send to the one before it.
+                return c.ReportsBetweenSends ? where + (before - where) / 3f : where;
             }
 
             var pointer = new MousePointer(null, new Random(20260912))

@@ -1,6 +1,7 @@
 using ExileCore2;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 using RectangleF = ExileCore2.Shared.RectangleF;
 using Vector2 = System.Numerics.Vector2;
@@ -170,6 +171,8 @@ internal sealed class MousePointer
 
         var here = Where();
         var now = Now();
+
+        RememberReport(here, now);
         var tolerance = (float)StopTolerancePx * StopTolerancePx;
         var counted = Math.Max(0, _recent.Count - RecentSendsAtLeast);
         var nearest = float.MaxValue;
@@ -182,6 +185,13 @@ internal sealed class MousePointer
         // **"The mouse was moved" is a conclusion, and it is sometimes the wrong one.** The cursor being somewhere
         // this pointer never put it is the only evidence there is. A hand on the mouse is one explanation; the game's
         // report lagging past RecentFor is another, which is what RecentFor's length is for.
+        //
+        // **Near the path between two sends, not only near a send.** The game reported the cursor at (620,278), on the
+        // straight line from (637,286) to (540,244) - two consecutive points this pointer put it - and 19 px from either,
+        // with nobody touching the mouse; the run stopped and a second reward window went unanswered (2026-10-11
+        // 18:23). Why the game reports a point between two sends is not established; what is established is that a
+        // point on the pointer's own path is the pointer's own. A send counts as the end of the segment from the one
+        // before it. See StopCases 14.
         for (var i = 0; i < _recent.Count; i++)
         {
             var (point, at) = _recent[i];
@@ -189,7 +199,9 @@ internal sealed class MousePointer
             if (i < counted && now - at > RecentFor)
                 continue;
 
-            var gap = Vector2.DistanceSquared(here, point);
+            var gap = i == 0
+                ? Vector2.DistanceSquared(here, point)
+                : DistanceSquaredToSegment(here, _recent[i - 1].Point, point);
 
             if (gap <= tolerance)
                 return false;
@@ -206,21 +218,63 @@ internal sealed class MousePointer
 
         for (var i = _recent.Count - 1; i >= 0; i--)
         {
-            if (Vector2.DistanceSquared(here, _recent[i].Point) <= tolerance)
+            var gap = i == 0
+                ? Vector2.DistanceSquared(here, _recent[i].Point)
+                : DistanceSquaredToSegment(here, _recent[i - 1].Point, _recent[i].Point);
+
+            if (gap <= tolerance)
             {
                 own = (now - _recent[i].At).TotalMilliseconds;
                 break;
             }
         }
 
-        StopDetail = $"the cursor found at ({here.X:0},{here.Y:0}), {MathF.Sqrt(nearest):0} px from the nearest point it was " +
-                     $"put, ({was.X:0},{was.Y:0}) {(now - nearestAt).TotalMilliseconds:0}ms ago; last sent to " +
+        StopDetail = $"the cursor found at ({here.X:0},{here.Y:0}), {MathF.Sqrt(nearest):0} px from the nearest path it was " +
+                     $"put along, ending ({was.X:0},{was.Y:0}) {(now - nearestAt).TotalMilliseconds:0}ms ago; last sent to " +
                      $"({Expected.X:0},{Expected.Y:0}), {(_travel != null ? "still on its way" : "arrived")}; " +
                      (own >= 0 ? $"this pointer put it there itself {own:0}ms ago, so the game's report lagged"
-                               : $"not anywhere this pointer put it in the last {ReportedFor.TotalSeconds:0}s");
+                               : $"not anywhere this pointer put it in the last {ReportedFor.TotalSeconds:0}s") +
+                     $"; sent, newest first: {Trail(_recent.Select(r => (r.Point, r.At)), now)}" +
+                     $"; the game's reports, newest first: {Trail(_reports, now)}";
 
         return true;
     }
+
+    /// <summary>The squared distance from a point to the segment between a and b.</summary>
+    private static float DistanceSquaredToSegment(Vector2 point, Vector2 a, Vector2 b)
+    {
+        var along = b - a;
+        var length = along.LengthSquared();
+
+        if (length <= 0f)
+            return Vector2.DistanceSquared(point, a);
+
+        var t = Math.Clamp(Vector2.Dot(point - a, along) / length, 0f, 1f);
+
+        return Vector2.DistanceSquared(point, a + along * t);
+    }
+
+    /// <summary>
+    /// Where the game reported the cursor at each check, for the last ReportedFor, for StopDetail only: with the sends
+    /// beside them, a stop says whether the game's report was trailing this pointer's path or somewhere else.
+    /// </summary>
+    private readonly List<(Vector2 Point, TimeSpan At)> _reports = new();
+
+    private void RememberReport(Vector2 here, TimeSpan now)
+    {
+        _reports.Add((here, now));
+
+        var stale = 0;
+
+        while (stale < _reports.Count && now - _reports[stale].At > ReportedFor)
+            stale++;
+
+        _reports.RemoveRange(0, stale);
+    }
+
+    /// <summary>Up to 16 points, newest first, as (x,y)-ms ago, for StopDetail.</summary>
+    private static string Trail(IEnumerable<(Vector2 Point, TimeSpan At)> points, TimeSpan now) =>
+        string.Join(" ", points.Reverse().Take(16).Select(p => $"({p.Point.X:0},{p.Point.Y:0})-{(now - p.At).TotalMilliseconds:0}"));
 
     /// <summary>Whether an asked-for move has gone unconfirmed for longer than it should have.</summary>
     public bool Expired() =>
