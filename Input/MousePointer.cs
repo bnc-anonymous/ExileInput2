@@ -639,6 +639,7 @@ internal sealed class MousePointer
         if (StayPut && _stayedAt == null && Holds(rect, here))
         {
             _stayedAt = rect;
+            _planned = false;
 
             Expected = here;
             Awaiting = true;
@@ -711,6 +712,10 @@ internal sealed class MousePointer
         var shortest = minMs ?? MinTravelMs;
         var perRootPx = msPerRootPx ?? TravelMsPerRootPx;
 
+        // A planned journey - drift and timing given - counts as arrived once it has put the cursor on its point. See
+        // Arrived.
+        _planned = minMs != null;
+
         // Where the cursor is now goes on the record before anything is sent, because for the next
         // frame or several that is what the game will still be reporting. Without it the very
         // first move of a session reads its own starting point as the player having moved the
@@ -729,6 +734,8 @@ internal sealed class MousePointer
 
         var delayMs = Math.Max(0, MoveDelayMs?.Invoke() ?? 0);
 
+        LastMoveDelayMs = delayMs;
+
         // Nought means teleport, which is what this did before travel existed and is worth keeping
         // - it is the setting to reach for when something is going wrong and the question is
         // whether the path is why. With a button still down it waits as a journey of no length.
@@ -739,15 +746,18 @@ internal sealed class MousePointer
             if (delayMs > 0)
             {
                 _travel = new Travel(from, client, 1f, 0f, 0f, drift, Clock, delayMs);
+                LastMoveTravelMs = _travel.Ms;
                 return;
             }
 
             _travel = null;
+            LastMoveTravelMs = 0f;
             Put(client);
             return;
         }
 
         _travel = new Travel(from, client, shortest, perRootPx, ArcPercent, drift, Clock, delayMs);
+        LastMoveTravelMs = _travel.Ms;
     }
 
     /// <summary>
@@ -866,12 +876,24 @@ internal sealed class MousePointer
         if (_travel != null)
             return false;
 
-        if (Drift() > Accepts)
+        // **A planned journey has arrived when it has put the cursor on its point**, not when the game reports it there:
+        // the report trails the cursor by a frame or more, and with a 3px tolerance waiting on it held every deposited
+        // item 60 to 75ms after the cursor stopped (dump 2026-10-11 21:34:04). The click goes where the cursor is.
+        if (!_planned && Drift() > Accepts)
             return false;
 
         Awaiting = false;
         return true;
     }
+
+    /// <summary>Whether the journey in hand was planned ahead. See Arrived.</summary>
+    private bool _planned;
+
+    /// <summary>The last journey's wait for a click's button before setting off, in milliseconds.</summary>
+    public int LastMoveDelayMs { get; private set; }
+
+    /// <summary>The last journey's own length in time, its wait not counted, in milliseconds; 0 for a teleport.</summary>
+    public float LastMoveTravelMs { get; private set; }
 
     /// <summary>Forgets any outstanding move, for a machine giving up on what it was doing.</summary>
     public void Forget()

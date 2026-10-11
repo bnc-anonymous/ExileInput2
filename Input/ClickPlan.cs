@@ -94,16 +94,24 @@ internal sealed class ClickPlan
         return true;
     }
 
-    /// <summary>The paths, clicks and modifiers from the click in hand on. See the class.</summary>
-    public void Draw(Graphics graphics)
+    /// <summary>
+    /// The paths, clicks and modifiers from the click in hand on, at this opacity: 1 while the queue is followed, falling
+    /// to 0 over a second once it is given up. See the class and ExileInput2.Render.
+    /// </summary>
+    public void Draw(Graphics graphics, float opacity = 1f)
     {
+        Color Faded(Color colour) => Color.FromArgb((int)(colour.A * Math.Clamp(opacity, 0f, 1f)), colour.R, colour.G, colour.B);
+
+        var bright = Faded(Bright);
+        var dim = Faded(Dim);
+
         var first = Current != null ? Next - 1 : Next;
 
         for (var i = Math.Max(0, first); i < Items.Count; i++)
         {
             var item = Items[i];
             var current = i == first;
-            var line = current ? Color.FromArgb(230, Bright) : Color.FromArgb(110, 255, 255, 255);
+            var line = Faded(current ? Color.FromArgb(230, Bright) : Color.FromArgb(110, 255, 255, 255));
             var points = new Vector2[PathSamples];
 
             for (var k = 0; k < PathSamples; k++)
@@ -117,7 +125,7 @@ internal sealed class ClickPlan
             if (item.LeadMs > 0 && modifier.Length > 0)
             {
                 var at = item.Path.At(item.Path.ProgressAt(Math.Max(0f, item.Path.Ms - item.LeadMs)));
-                Letter(graphics, modifier, at + new Vector2(0f, -12f), true);
+                Letter(graphics, modifier, at + new Vector2(0f, -12f), bright);
             }
 
             // The click: down bright on the point, up dim beside it, a letter's width and a little apart; its number
@@ -126,24 +134,24 @@ internal sealed class ClickPlan
             var step = new Vector2(size.X + 3f, 0f);
             var button = item.Right ? "R" : "L";
 
-            Letter(graphics, button, item.To, true);
-            Letter(graphics, button, item.To + step, false);
-            graphics.DrawText($"{i + 1}", item.To - new Vector2(0f, size.Y + 2f), Faded,
+            Letter(graphics, button, item.To, bright);
+            Letter(graphics, button, item.To + step, dim);
+            graphics.DrawText($"{i + 1}", item.To - new Vector2(0f, size.Y + 2f), dim,
                 ExileCore2.Shared.Enums.FontAlign.Center | ExileCore2.Shared.Enums.FontAlign.VerticalCenter);
 
             // The modifier coming up, after the last click that holds it.
             var last = i == Items.Count - 1 || !Items[i + 1].Carried;
 
             if (last && modifier.Length > 0)
-                Letter(graphics, modifier, item.To + step * 2f, false);
+                Letter(graphics, modifier, item.To + step * 2f, dim);
         }
     }
 
     private const int PathSamples = 20;
 
-    private static void Letter(Graphics graphics, string text, Vector2 at, bool down)
+    private static void Letter(Graphics graphics, string text, Vector2 at, Color colour)
     {
-        graphics.DrawText(text, at, down ? Bright : Faded,
+        graphics.DrawText(text, at, colour,
             ExileCore2.Shared.Enums.FontAlign.Center | ExileCore2.Shared.Enums.FontAlign.VerticalCenter);
     }
 
@@ -154,7 +162,7 @@ internal sealed class ClickPlan
     private static readonly Color Bright = Color.FromArgb(255, 90, 255, 120);
 
     /// <summary>A button or modifier coming up, and the clicks' numbers: light enough to read over the game.</summary>
-    private static readonly Color Faded = Color.FromArgb(215, 225, 225, 225);
+    private static readonly Color Dim = Color.FromArgb(215, 225, 225, 225);
 
     /// <summary>C for ctrl, S for shift, A for alt; "" for none.</summary>
     private static string ModifierLetters(IReadOnlyList<Keys> modifiers)

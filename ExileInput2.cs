@@ -111,6 +111,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             (string who, Vector2 client, Keys[] modifiers) => MoveTo(who, client, modifiers));
         b.SaveMethod("ExileInput2.Arrived", (string who) => Arrived(who));
 
+        // The caller's last move: its wait for a click's button, and its own length, in milliseconds. See MousePointer.
+        b.SaveMethod("ExileInput2.LastMoveTimes",
+            (string who) => new[] { (float)PointerFor(who).LastMoveDelayMs, PointerFor(who).LastMoveTravelMs });
+
         // A queue of clicks asked for ahead of time, drawn on screen when show is set. Empty points drop it. See PlanClicks.
         b.SaveMethod("ExileInput2.PlanClicks",
             (string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs, bool show) =>
@@ -926,7 +930,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             MouseBlock.Stop();
 
         ForgetKeyStop(who);
-        _plans.Remove(who);
+        FadePlan(who);
         _lease.Release(who);
         return true;
     }
@@ -1001,7 +1005,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             KeysFor(_held).ReleaseAll();
             Buttons.Release();
             _drags.Remove(_held);
-            _plans.Remove(_held);
+            FadePlan(_held);
             MouseBlock.Stop();
             ForgetKeyStop(_held);
             _held = null;
@@ -1025,7 +1029,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         KeysFor(who).ReleaseAll();
         Buttons.Release();
         _drags.Remove(who);
-        _plans.Remove(who);
+        FadePlan(who);
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();
         ForgetKeyStop(who);
@@ -1084,11 +1088,36 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// <summary>Each caller's planned clicks, while it holds the cursor. See PlanClicks.</summary>
     private readonly Dictionary<string, ClickPlan> _plans = new();
 
-    /// <summary>The queue of the caller holding the cursor, where it asked for it to be shown. See ClickPlan.Draw.</summary>
+    /// <summary>
+    /// Takes a caller's queue away when it gives up the cursor or is stopped - the player moving the mouse, the action
+    /// key ending a run - and lets what was left of it fade out over FadeFor rather than vanish. See Render.
+    /// </summary>
+    private void FadePlan(string who)
+    {
+        if (who != null && _plans.Remove(who, out var plan) && plan.Show && plan.Next < plan.Items.Count)
+            _fading.Add((plan, DateTime.UtcNow));
+    }
+
+    /// <summary>Queues given up, fading, with when. See FadePlan.</summary>
+    private readonly List<(ClickPlan Plan, DateTime Since)> _fading = new();
+
+    private static readonly TimeSpan FadeFor = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// The queue of the caller holding the cursor, where it asked for it to be shown, and any given up, fading. See
+    /// ClickPlan.Draw.
+    /// </summary>
     public override void Render()
     {
-        if (_lease.Holder is { } holder && _plans.TryGetValue(holder, out var plan) && plan.Show)
-            plan.Draw(Graphics);
+        var now = DateTime.UtcNow;
+
+        _fading.RemoveAll(f => now - f.Since >= FadeFor);
+
+        foreach (var (plan, since) in _fading)
+            plan.Draw(Graphics, 1f - (float)((now - since).TotalMilliseconds / FadeFor.TotalMilliseconds));
+
+        if (_lease.Holder is { } holder && _plans.TryGetValue(holder, out var current) && current.Show)
+            current.Draw(Graphics);
     }
 
     public override void OnUnload()

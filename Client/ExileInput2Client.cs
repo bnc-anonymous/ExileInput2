@@ -70,6 +70,7 @@ public sealed class ExileInput2Client
     private Func<string, int, bool, Keys, bool> _blockPlayerKeys;
     private Func<string, bool> _keyBlockCancelled;
     private Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool> _planClicks;
+    private Func<string, float[]> _lastMoveTimes;
     private Func<string, string> _stopped;
 
     private Func<string, string> _stopDetail;
@@ -173,6 +174,7 @@ public sealed class ExileInput2Client
             _blockPlayerKeys = b.GetMethod<Func<string, int, bool, Keys, bool>>("ExileInput2.BlockPlayerKeys");
             _keyBlockCancelled = b.GetMethod<Func<string, bool>>("ExileInput2.KeyBlockCancelled");
             _planClicks = b.GetMethod<Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool>>("ExileInput2.PlanClicks");
+            _lastMoveTimes = b.GetMethod<Func<string, float[]>>("ExileInput2.LastMoveTimes");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
         }
@@ -481,6 +483,16 @@ public sealed class ExileInput2Client
     {
         Look();
         return _planClicks?.Invoke(_me, rects, points, rights, modifiers, shortestMoveMs, show) ?? false;
+    }
+
+    /// <summary>
+    /// The last move's wait for a click's button before setting off and its own length, in milliseconds; null from an
+    /// ExileInput2 too old to say.
+    /// </summary>
+    public (float WaitMs, float TravelMs)? LastMoveTimes()
+    {
+        Look();
+        return _lastMoveTimes?.Invoke(_me) is [var wait, var travel] ? (wait, travel) : null;
     }
 
     /// <summary>Presses and releases a key.</summary>
