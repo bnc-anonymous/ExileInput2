@@ -51,7 +51,10 @@ internal static class SeedCases
             "the tables elsewhere here are written against it, and a seed left behind by one case must not move another");
 
         var seeds = new[] { 1, 42, 1234567, 7654321, int.MaxValue - 1 };
-        var factors = seeds.SelectMany(seed => Enumerable.Range(0, 5).Select(which => ExileInput2Settings.SeedFactor(seed, which))).ToList();
+        var factors = seeds.SelectMany(seed => Enumerable.Range(0, 4)
+            .Where(which => which != ExileInput2Settings.ShortestMoveIndex)
+            .Select(which => ExileInput2Settings.SeedFactor(seed, which))).ToList();
+        var shortest = Enumerable.Range(1, 2000).Select(seed => ExileInput2Settings.SeedFactor(seed, ExileInput2Settings.ShortestMoveIndex)).ToList();
 
         Check("5  Seed nought leaves every setting as its slider",
             Enumerable.Range(0, 5).All(which => ExileInput2Settings.SeedFactor(0, which) == 1f),
@@ -59,6 +62,9 @@ internal static class SeedCases
         Check("6  Any other seed moves a setting 10 to 20 per cent, up or down",
             factors.All(f => f is >= 0.8f and <= 0.9f or >= 1.1f and <= 1.2f),
             "the variation asked for: visible on the menu, and never so far that the feel stops being the slider's");
+        Check("6b Shortest Move goes from 5 per cent down to 20 per cent up, and both ways",
+            shortest.All(f => f is >= 0.95f and <= 1.2f) && shortest.Any(f => f < 1f) && shortest.Any(f => f > 1.15f),
+            "much below its slider, short hops clicked too quickly; above it is the safe side");
         Check("7  The same seed moves a setting the same way every time",
             seeds.All(seed => Enumerable.Range(0, 5).All(which => ExileInput2Settings.SeedFactor(seed, which) == ExileInput2Settings.SeedFactor(seed, which))),
             "an install's habit is the same session to session");
