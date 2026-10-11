@@ -296,16 +296,16 @@ public class ExileInput2Settings : ISettings
             var (name, node) = Varied[i];
             var change = (SeedFactor(Seed, i) - 1f) * 100f;
 
-            ImGuiNET.ImGui.Text($"  {name}: {Used(i)}" +
+            ImGuiNET.ImGui.TextUnformatted($"  {name}: {Used(i)}" +
                                 (Seed == 0 ? "" : $"   (slider {node.Value}, {(change >= 0 ? "+" : "")}{change:0}%)"));
         }
 
         var hold = UsedClickHold;
         var modifier = UsedModifierTiming;
 
-        ImGuiNET.ImGui.Text($"  Click Hold (ms): {hold.Least} / {hold.Usual} / {hold.Most}" +
+        ImGuiNET.ImGui.TextUnformatted($"  Click Hold (ms): {hold.Least} / {hold.Usual} / {hold.Most}" +
                             (Seed == 0 ? "" : "   (shortest / usual / longest, each up to 5% from its slider)"));
-        ImGuiNET.ImGui.Text($"  Modifier Timing (ms): {modifier.Least} / {modifier.Usual} / {modifier.Most}");
+        ImGuiNET.ImGui.TextUnformatted($"  Modifier Timing (ms): {modifier.Least} / {modifier.Usual} / {modifier.Most}");
     }
 
     /// <summary>Every slider and switch back to its default. The seed is left as it is.</summary>
