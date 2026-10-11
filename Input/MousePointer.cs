@@ -128,6 +128,18 @@ internal sealed class MousePointer
     /// <summary>When the outstanding move was asked for, for the timeout.</summary>
     private TimeSpan _placedAt;
 
+    /// <summary>
+    /// Until when the player's mouse does not stop this pointer, on Now's clock. Zero when it always does. See
+    /// IgnorePlayerFor.
+    /// </summary>
+    private TimeSpan _playerIgnoredUntil;
+
+    /// <summary>
+    /// Lets this pointer's moves go on through the player's mouse movement for this long, for a caller that has asked
+    /// for one move and click to land however the player's hand moves. Zero or less ends it.
+    /// </summary>
+    public void IgnorePlayerFor(int ms) => _playerIgnoredUntil = ms > 0 ? Now() + TimeSpan.FromMilliseconds(ms) : TimeSpan.Zero;
+
     private TimeSpan Now() => Clock?.Invoke() ?? TimeSpan.FromMilliseconds(Environment.TickCount64);
 
     private void Remember(Vector2 client)
@@ -634,8 +646,8 @@ internal sealed class MousePointer
             return;
 
         // Before advancing, not after: a step that has already moved the cursor has overwritten the
-        // evidence of where the player put it.
-        if (Interfered())
+        // evidence of where the player put it. Not while the player is being ignored. See IgnorePlayerFor.
+        if (Now() >= _playerIgnoredUntil && Interfered())
         {
             Stop(StopReason.PlayerMovedTheMouse);
             return;
@@ -708,7 +720,10 @@ internal sealed class MousePointer
         }
 
         var origin = _gc.Window.GetWindowRectangle().TopLeft;
-        Input.SetCursorPos(new Vector2(origin.X + client.X, origin.Y + client.Y));
+        var screen = new Vector2(origin.X + client.X, origin.Y + client.Y);
+
+        MouseBlock.OwnMoveTo((int)screen.X, (int)screen.Y);
+        Input.SetCursorPos(screen);
     }
 
     /// <summary>How far the cursor is from where it was sent, in client-space pixels.</summary>
@@ -764,5 +779,6 @@ internal sealed class MousePointer
     {
         Forget();
         _recent.Clear();
+        _playerIgnoredUntil = TimeSpan.Zero;
     }
 }

@@ -117,6 +117,11 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // setting is the default and a caller that knows better says so.
         b.SaveMethod("ExileInput2.SetTolerance", (string who, int px) => SetTolerance(who, px));
         b.SaveMethod("ExileInput2.SetShortestMove", (string who, int ms) => SetShortestMove(who, ms));
+        b.SaveMethod("ExileInput2.SetMoveTimePerRootPixel", (string who, int ms) => SetMoveTimePerRootPixel(who, ms));
+
+        // For one move and click that must land whatever the player's hand does: the player's mouse stops nothing for
+        // this long, and with block it is dropped as well. See IgnorePlayerMouse.
+        b.SaveMethod("ExileInput2.IgnorePlayerMouse", (string who, int ms, bool block) => IgnorePlayerMouse(who, ms, block));
 
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
@@ -218,7 +223,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         pointer.MinTravelMs = _shortestMoves.TryGetValue(who, out var shortest)
             ? shortest * ExileInput2Settings.SeedFactor(Settings.Seed, 1)
             : Settings.UsedMinTravelMs;
-        pointer.TravelMsPerRootPx = Settings.UsedTravelMsPerRootPx;
+        pointer.TravelMsPerRootPx = _moveTimesPerRootPixel.TryGetValue(who, out var perRootPixel)
+            ? perRootPixel * ExileInput2Settings.SeedFactor(Settings.Seed, 2)
+            : Settings.UsedTravelMsPerRootPx;
         pointer.ArcPercent = Settings.UsedArcPercent;
         pointer.StayPut = Settings.StayPut.Value;
         pointer.OnModifier ??= key => KeysFor(who).Hold(key);
@@ -507,6 +514,46 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// <summary>Each caller's own Shortest Move in milliseconds, where one was asked for. See SetShortestMove.</summary>
     private readonly Dictionary<string, int> _shortestMoves = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// A caller's own Move Time Per Root Pixel in place of the menu's, as SetShortestMove is for Shortest Move. Zero
+    /// teleports; negative goes back to the menu's. Up to 60, the menu's own range.
+    /// </summary>
+    private bool SetMoveTimePerRootPixel(string who, int ms)
+    {
+        if (!_lease.Held(who) || ms > 60)
+            return false;
+
+        if (ms < 0)
+            _moveTimesPerRootPixel.Remove(who);
+        else
+            _moveTimesPerRootPixel[who] = ms;
+
+        return true;
+    }
+
+    private readonly Dictionary<string, int> _moveTimesPerRootPixel = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// For up to MouseBlock.MostMs, the player's mouse movement does not stop this caller, and with block the player's
+    /// movement, presses and wheel are dropped before the game sees them. Ends early when the caller releases or is
+    /// stopped. Needs the cursor taken. See MouseBlock.
+    /// </summary>
+    private bool IgnorePlayerMouse(string who, int ms, bool block)
+    {
+        if (!_lease.Held(who))
+            return false;
+
+        ms = Math.Clamp(ms, 0, MouseBlock.MostMs);
+        PointerFor(who).IgnorePlayerFor(ms);
+
+        if (block)
+            MouseBlock.Block(ms);
+        else
+            MouseBlock.Stop();
+
+        return true;
+    }
+
     private bool Click(string who, Keys[] modifiers, bool right)
     {
         modifiers ??= Modifier.None;
@@ -651,6 +698,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         KeysFor(who).ReleaseAll();
         Buttons.Release();
+        PointerFor(who).IgnorePlayerFor(0);
+        MouseBlock.Stop();
         _lease.Release(who);
         return true;
     }
@@ -708,6 +757,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             KeysFor(_held).ReleaseAll();
             Buttons.Release();
             _drags.Remove(_held);
+            MouseBlock.Stop();
             _held = null;
         }
         else if (_lease.Holder != null)
@@ -728,6 +778,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         KeysFor(who).ReleaseAll();
         Buttons.Release();
         _drags.Remove(who);
+        PointerFor(who).IgnorePlayerFor(0);
+        MouseBlock.Stop();
         _lease.Release(who);
         _held = null;
     }
@@ -761,6 +813,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             keys.ReleaseAll();
 
         HeldKeys.ReleaseEverything();
+        MouseBlock.Stop();
         _lease.Break();
     }
 }

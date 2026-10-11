@@ -10,6 +10,12 @@ internal sealed record StopCase(string Name, StopReason Want, string Reason)
     /// <summary>Which step the player's hand arrives on, or -1 for a run they never touch.</summary>
     public int PlayerMovesAtStep { get; init; } = -1;
 
+    /// <summary>Which step the player's hand comes off again, the cursor going back to following the sends, or -1 for never.</summary>
+    public int PlayerLetsGoAtStep { get; init; } = -1;
+
+    /// <summary>How long the player's mouse is ignored for from the start, in ms, as IgnorePlayerMouse asks. 0 for not at all.</summary>
+    public int PlayerIgnoredMs { get; init; }
+
     /// <summary>Where the player drags the cursor to.</summary>
     public Vector2 PlayerMovesTo { get; init; } = new(40f, 40f);
 
@@ -157,6 +163,23 @@ internal static class StopCases
             PlayerMovesTo = new Vector2(260f, 940f),
         },
 
+        new("12 While the player is ignored, a hand on the mouse does not stop it", StopReason.None,
+            "a caller that asked for one move and click to land however the player's hand moves. The hand comes and "
+            + "goes within the window and the journey carries on to the end")
+        {
+            PlayerMovesAtStep = 3,
+            PlayerLetsGoAtStep = 6,
+            PlayerIgnoredMs = 1000,
+        },
+
+        new("13 Once the window has passed, a hand stops it again", StopReason.PlayerMovedTheMouse,
+            "the window is bounded. Ignored for two frames, the hand arriving at the fourth is a hand on the mouse")
+        {
+            PlayerMovesAtStep = 3,
+            PlayerLetsGoAtStep = 6,
+            PlayerIgnoredMs = 32,
+        },
+
         new("9  A new session does not inherit the last one's sends", StopReason.None,
             "moving the mouse BETWEEN two runs is not interference with either of them, and it is "
             + "what anybody does - place a bomb, reposition, place the next. Carried across the "
@@ -226,6 +249,7 @@ internal static class StopCases
             };
 
             pointer.Place(Target);
+            pointer.IgnorePlayerFor(c.PlayerIgnoredMs);
 
             var steps = 0;
             var stoppedAtStep = -1;
@@ -237,6 +261,9 @@ internal static class StopCases
 
                 if (i == c.PlayerMovesAtStep)
                     playerTook = true;
+
+                if (i == c.PlayerLetsGoAtStep)
+                    playerTook = false;
 
                 pointer.Step();
                 steps++;

@@ -63,6 +63,8 @@ public sealed class ExileInput2Client
     private Func<string, bool> _forget;
     private Func<string, int, bool> _setTolerance;
     private Func<string, int, bool> _setShortestMove;
+    private Func<string, int, bool> _setMoveTimePerRootPixel;
+    private Func<string, int, bool, bool> _ignorePlayerMouse;
     private Func<string, string> _stopped;
 
     private Func<string, string> _stopDetail;
@@ -159,6 +161,8 @@ public sealed class ExileInput2Client
             _forget = b.GetMethod<Func<string, bool>>("ExileInput2.Forget");
             _setTolerance = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetTolerance");
             _setShortestMove = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetShortestMove");
+            _setMoveTimePerRootPixel = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetMoveTimePerRootPixel");
+            _ignorePlayerMouse = b.GetMethod<Func<string, int, bool, bool>>("ExileInput2.IgnorePlayerMouse");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
         }
@@ -386,6 +390,29 @@ public sealed class ExileInput2Client
     {
         Look();
         return _setShortestMove?.Invoke(_me, ms) ?? false;
+    }
+
+    /// <summary>
+    /// This caller's own Move Time Per Root Pixel in milliseconds, in place of ExileInput2's menu setting, as
+    /// SetShortestMove is for Shortest Move. 0 teleports; up to 60; a negative value goes back to the menu's. Kept until
+    /// changed. Needs the cursor taken. False from an ExileInput2 too old to have it.
+    /// </summary>
+    public bool SetMoveTimePerRootPixel(int ms)
+    {
+        Look();
+        return _setMoveTimePerRootPixel?.Invoke(_me, ms) ?? false;
+    }
+
+    /// <summary>
+    /// For up to a second, the player's mouse movement does not stop this caller's moves; with block, the player's
+    /// movement, presses and wheel are also dropped before the game sees them. Ends early on Release or a stop. For one
+    /// move and click that must land whatever the player's hand does. Needs the cursor taken. False from an ExileInput2
+    /// too old to have it.
+    /// </summary>
+    public bool IgnorePlayerMouse(int ms, bool block)
+    {
+        Look();
+        return _ignorePlayerMouse?.Invoke(_me, ms, block) ?? false;
     }
 
     /// <summary>Presses and releases a key.</summary>
