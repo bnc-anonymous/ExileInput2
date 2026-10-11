@@ -113,7 +113,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // A queue of clicks asked for ahead of time, drawn on screen when show is set. Empty points drop it. See PlanClicks.
         b.SaveMethod("ExileInput2.PlanClicks",
-            (string who, Vector2[] points, bool[] rights, Keys[] modifiers, bool show) => PlanClicks(who, points, rights, modifiers, show));
+            (string who, Vector2[] points, bool[] rights, Keys[] modifiers, int[] shortestMoveMs, bool show) =>
+                PlanClicks(who, points, rights, modifiers, shortestMoveMs, show));
         b.SaveMethod("ExileInput2.Drift", (string who) => Drift(who));
         b.SaveMethod("ExileInput2.Aiming", (string who) => Aiming(who));
         b.SaveMethod("ExileInput2.Expected", (string who) => Expected(who));
@@ -537,7 +538,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             var planned = plan.Items[plan.Next];
 
             pointer.PlaceAlong(client, modifiers ?? Modifier.None, planned.Drift,
-                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming));
+                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx);
             plan.Current = planned;
             plan.Next++;
         }
@@ -1033,11 +1034,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
     /// <summary>
     /// A queue of clicks at these points, in order, each a right click where rights says so and all with these modifiers,
-    /// planned now and drawn on screen while show is set. The caller still asks for each move and click; a move to the
-    /// next point uses its planned journey, and anything else drops the queue. Empty points drop it now. Needs the
-    /// cursor taken. See ClickPlan.
+    /// planned now and drawn on screen while show is set. Each move's shortest move is shortestMoveMs's for it, moved by
+    /// the seed as SetShortestMove's is; -1, or none given, is the menu's own. The caller still asks for each move and
+    /// click; a move to the next point uses its planned journey and timing, whatever is set by then, and anything else
+    /// drops the queue. Empty points drop it now. Needs the cursor taken. See ClickPlan.
     /// </summary>
-    private bool PlanClicks(string who, Vector2[] points, bool[] rights, Keys[] modifiers, bool show)
+    private bool PlanClicks(string who, Vector2[] points, bool[] rights, Keys[] modifiers, int[] shortestMoveMs, bool show)
     {
         if (!_lease.Held(who))
             return false;
@@ -1049,7 +1051,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         }
 
         _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), points, rights ?? [], modifiers ?? Modifier.None, show,
-            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming));
+            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming),
+            i => shortestMoveMs != null && i < shortestMoveMs.Length && shortestMoveMs[i] >= 0
+                ? shortestMoveMs[i] * ExileInput2Settings.SeedFactor(Settings.Seed, ExileInput2Settings.ShortestMoveIndex)
+                : Settings.UsedMinTravelMs);
 
         return true;
     }

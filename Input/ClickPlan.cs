@@ -21,9 +21,12 @@ namespace ExileInput2;
 /// </summary>
 internal sealed class ClickPlan
 {
-    /// <summary>One planned click: the journey to it, and its timings.</summary>
-    internal sealed record Planned(Vector2 From, Vector2 To, float Drift, Travel Path, int LeadMs, bool Carried, int HoldMs,
-        int ReleaseMs, bool Right, Keys[] Modifiers);
+    /// <summary>
+    /// One planned click: the journey to it - its drift, and the shortest move and time per root pixel it is timed with,
+    /// kept so the move is made as planned whatever is set by then - and its timings.
+    /// </summary>
+    internal sealed record Planned(Vector2 From, Vector2 To, float Drift, float MinMs, float MsPerRootPx, Travel Path, int LeadMs,
+        bool Carried, int HoldMs, int ReleaseMs, bool Right, Keys[] Modifiers);
 
     public readonly List<Planned> Items = [];
 
@@ -37,11 +40,12 @@ internal sealed class ClickPlan
 
     /// <summary>
     /// The queue for these points, from the cursor: each journey's drift taken from the pointer as it would have been,
-    /// and its modifier lead, button hold and modifier release drawn now. A click whose modifiers match the one before it
-    /// carries them over, with no lead of its own.
+    /// its shortest move from minMsOf - each click's own, so a caller can time its first move unlike the rest - and its
+    /// modifier lead, button hold and modifier release drawn now. A click whose modifiers match the one before it carries
+    /// them over, with no lead of its own.
     /// </summary>
     public static ClickPlan Make(MousePointer pointer, Vector2 cursor, IReadOnlyList<Vector2> points, IReadOnlyList<bool> rights,
-        Keys[] modifiers, bool show, Func<int> holdMs, Func<int> modifierMs)
+        Keys[] modifiers, bool show, Func<int> holdMs, Func<int> modifierMs, Func<int, float> minMsOf)
     {
         var plan = new ClickPlan { Show = show };
         var from = cursor;
@@ -51,14 +55,15 @@ internal sealed class ClickPlan
         {
             var to = points[i];
             var drift = pointer.NextJourney();
-            var teleport = pointer.TravelMsPerRootPx <= 0;
-            var path = teleport
+            var minMs = minMsOf(i);
+            var perRootPx = pointer.TravelMsPerRootPx;
+            var path = perRootPx <= 0
                 ? new Travel(from, to, 1f, 0f, 0f, drift)
-                : new Travel(from, to, pointer.MinTravelMs, pointer.TravelMsPerRootPx, pointer.ArcPercent, drift);
+                : new Travel(from, to, minMs, perRootPx, pointer.ArcPercent, drift);
             var carried = i > 0 && Modifier.Any(mods);
 
-            plan.Items.Add(new Planned(from, to, drift, path, carried || !Modifier.Any(mods) ? 0 : modifierMs(), carried,
-                holdMs(), modifierMs(), i < rights.Count && rights[i], mods));
+            plan.Items.Add(new Planned(from, to, drift, minMs, perRootPx, path, carried || !Modifier.Any(mods) ? 0 : modifierMs(),
+                carried, holdMs(), modifierMs(), i < rights.Count && rights[i], mods));
             from = to;
         }
 

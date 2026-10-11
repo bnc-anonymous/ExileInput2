@@ -694,8 +694,12 @@ internal sealed class MousePointer
     /// Place, with the journey's drift and its modifier's lead given rather than drawn: for a planned click, so the
     /// journey made is the one drawn. See ClickPlan.
     /// </summary>
-    public void PlaceAlong(Vector2 client, Keys[] modifiers, float drift, int modifierLeadMs)
+    public void PlaceAlong(Vector2 client, Keys[] modifiers, float drift, int modifierLeadMs, float? minMs = null,
+        float? msPerRootPx = null)
     {
+        var shortest = minMs ?? MinTravelMs;
+        var perRootPx = msPerRootPx ?? TravelMsPerRootPx;
+
         // Where the cursor is now goes on the record before anything is sent, because for the next
         // frame or several that is what the game will still be reporting. Without it the very
         // first move of a session reads its own starting point as the player having moved the
@@ -717,7 +721,7 @@ internal sealed class MousePointer
         // Nought means teleport, which is what this did before travel existed and is worth keeping
         // - it is the setting to reach for when something is going wrong and the question is
         // whether the path is why. With a button still down it waits as a journey of no length.
-        if (TravelMsPerRootPx <= 0)
+        if (perRootPx <= 0)
         {
             PressModifiers();
 
@@ -732,7 +736,7 @@ internal sealed class MousePointer
             return;
         }
 
-        _travel = new Travel(from, client, MinTravelMs, TravelMsPerRootPx, ArcPercent, drift, Clock, delayMs);
+        _travel = new Travel(from, client, shortest, perRootPx, ArcPercent, drift, Clock, delayMs);
     }
 
     /// <summary>
