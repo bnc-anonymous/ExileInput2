@@ -809,9 +809,10 @@ internal sealed class MousePointer
         if (_travel == null)
             return;
 
-        // By the time stepped through, so a stall carries on rather than jumping: the most a step may move through, 80 to
-        // 100% of Most Move Time Per Frame. See Travel.Advance.
-        _travel.Advance(TimeSpan.FromMilliseconds(MostMoveTimePerFrameMs * (0.8 + _rng.NextDouble() * 0.2)));
+        // By the time stepped through, so a stall carries on rather than jumping: the most a step may move through is Most
+        // Move Time Per Frame, the same every step - drawn afresh, 80 to 100% of a 25ms cap, ordinary frames over it moved
+        // at a different pace each and the cursor stuttered (2026-10-11). 0 is no cap. See Travel.Advance.
+        _travel.Advance(MostMoveTimePerFrameMs > 0 ? TimeSpan.FromMilliseconds(MostMoveTimePerFrameMs) : TimeSpan.MaxValue);
 
         if (!_modifiersDown && _travel.RemainingMs <= _modifierLeadMs)
             PressModifiers();
@@ -907,7 +908,7 @@ internal sealed class MousePointer
     }
 
     /// <summary>The most of a journey's time one step moves through, in milliseconds. See Travel.Advance.</summary>
-    public float MostMoveTimePerFrameMs { get; set; } = 25f;
+    public float MostMoveTimePerFrameMs { get; set; } = 50f;
 
     /// <summary>Whether the journey in hand was planned ahead. See Arrived.</summary>
     private bool _planned;

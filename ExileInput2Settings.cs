@@ -86,9 +86,9 @@ public class ExileInput2Settings : ISettings
     [Menu("Most Move Time Per Frame (ms)",
         "How much of a move one frame may cover. A move is timed by the clock, so a frame\n" +
         "held up - the game or the HUD pausing - would otherwise jump the cursor along\n" +
-        "the move in one go. Each frame that reaches it takes 80 to 100%% of it.\n\n" +
-        "Lower makes a pause show as a smaller jump and a longer slow-down.")]
-    public RangeNode<int> MostMoveTimePerFrameMs { get; set; } = new RangeNode<int>(25, 5, 100);
+        "the move in one go. Keep it well above a normal frame, or ordinary moves stutter.\n\n" +
+        "Lower makes a pause show as a smaller jump and a longer slow-down. 0 turns it off.")]
+    public RangeNode<int> MostMoveTimePerFrameMs { get; set; } = new RangeNode<int>(50, 0, 200);
 
     [Menu("Click Hold Shortest (ms)",
         "The shortest a mouse button is held down for a click. Each click's hold is drawn\n" +
@@ -155,7 +155,7 @@ public class ExileInput2Settings : ISettings
     public int SettingsVersion { get; set; }
 
     /// <summary>The latest shipped change to saved settings. Raise it with a step in Migrate.</summary>
-    internal const int CurrentSettingsVersion = 1;
+    internal const int CurrentSettingsVersion = 2;
 
     /// <summary>
     /// Brings a saved file up to CurrentSettingsVersion, once, and says what changed; empty when nothing did.
@@ -175,6 +175,14 @@ public class ExileInput2Settings : ISettings
         {
             settings.SpreadPercent.Value = 90;
             said = "Aim Within moved from the old default of 50% to 90%";
+        }
+
+        // 2 - Most Move Time Per Frame from 25 to 50: at 25, randomised down to 20, it held back ordinary frames as well as
+        // stalls, and moves stuttered (2026-10-11). Only a file at the old default is moved.
+        if (settings.SettingsVersion < 2 && settings.MostMoveTimePerFrameMs.Value == 25)
+        {
+            settings.MostMoveTimePerFrameMs.Value = 50;
+            said = said.Length > 0 ? said + "; Most Move Time Per Frame from 25 to 50" : "Most Move Time Per Frame moved from 25 to 50";
         }
 
         settings.SettingsVersion = CurrentSettingsVersion;
