@@ -809,8 +809,9 @@ internal sealed class MousePointer
         if (_travel == null)
             return;
 
-        // By the time stepped through, so a stall carries on rather than jumping. See Travel.MostStep.
-        _travel.Advance();
+        // By the time stepped through, so a stall carries on rather than jumping: the most a step may move through, 80 to
+        // 100% of Most Move Time Per Frame. See Travel.Advance.
+        _travel.Advance(TimeSpan.FromMilliseconds(MostMoveTimePerFrameMs * (0.8 + _rng.NextDouble() * 0.2)));
 
         if (!_modifiersDown && _travel.RemainingMs <= _modifierLeadMs)
             PressModifiers();
@@ -904,6 +905,9 @@ internal sealed class MousePointer
         Awaiting = false;
         return true;
     }
+
+    /// <summary>The most of a journey's time one step moves through, in milliseconds. See Travel.Advance.</summary>
+    public float MostMoveTimePerFrameMs { get; set; } = 25f;
 
     /// <summary>Whether the journey in hand was planned ahead. See Arrived.</summary>
     private bool _planned;

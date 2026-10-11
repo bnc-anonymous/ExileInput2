@@ -55,7 +55,7 @@ internal sealed class Travel
 
     /// <summary>
     /// Time since the journey set off, negative while it waits to: by the clock, or once the pointer steps it, the time
-    /// it has stepped through, no more than MostStep a step. See Advance.
+    /// it has stepped through, no more than the step's most. See Advance.
     /// </summary>
     private TimeSpan Elapsed => (_stepped ? _steppedThrough : Real) - TimeSpan.FromMilliseconds(_delayMs);
 
@@ -64,15 +64,15 @@ internal sealed class Travel
     private TimeSpan _lastReal;
 
     /// <summary>
-    /// The most of the journey one step moves through. **A stall is not a jump**: the whole process stopped for 82.8ms of
-    /// garbage collection in one window (dump 2026-10-11 22:06:31), and by the clock alone the next step put the cursor
-    /// most of a 130ms journey further on at once - a teleport, as the player saw it. Stepped through at this at most,
-    /// the journey picks up where it was and takes that much longer. Chosen: a step is 6 to 16ms at the HUD's rates.
+    /// Moves the journey on by the time since the last step, mostStep at most. Called by the pointer each step.
+    ///
+    /// **A stall is not a jump**: the whole process stopped for 82.8ms of garbage collection in one window (dump
+    /// 2026-10-11 22:06:31), and by the clock alone the next step put the cursor most of a 130ms journey further on at
+    /// once - a teleport, as the player saw it. Stepped through at mostStep at most, the journey picks up where it was and
+    /// takes that much longer. A step is 6 to 16ms at the HUD's rates, so only a stalled one is held back. See
+    /// ExileInput2Settings.MostMoveTimePerFrameMs.
     /// </summary>
-    internal static readonly TimeSpan MostStep = TimeSpan.FromMilliseconds(25);
-
-    /// <summary>Moves the journey on by the time since the last step, MostStep at most. Called by the pointer each step.</summary>
-    public void Advance()
+    public void Advance(TimeSpan mostStep)
     {
         var real = Real;
         var step = real - _lastReal;
@@ -80,8 +80,8 @@ internal sealed class Travel
         _lastReal = real;
         _stepped = true;
 
-        if (step > MostStep)
-            step = MostStep;
+        if (step > mostStep)
+            step = mostStep;
 
         if (step > TimeSpan.Zero)
             _steppedThrough += step;

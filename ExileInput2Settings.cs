@@ -83,6 +83,13 @@ public class ExileInput2Settings : ISettings
         "mouse stops it.")]
     public RangeNode<int> ArriveTimeoutMs { get; set; } = new RangeNode<int>(1500, 100, 10000);
 
+    [Menu("Most Move Time Per Frame (ms)",
+        "How much of a move one frame may cover. A move is timed by the clock, so a frame\n" +
+        "held up - the game or the HUD pausing - would otherwise jump the cursor along\n" +
+        "the move in one go. Each frame that reaches it takes 80 to 100% of it.\n\n" +
+        "Lower makes a pause show as a smaller jump and a longer slow-down.")]
+    public RangeNode<int> MostMoveTimePerFrameMs { get; set; } = new RangeNode<int>(25, 5, 100);
+
     [Menu("Click Hold Shortest (ms)",
         "The shortest a mouse button is held down for a click. Each click's hold is drawn\n" +
         "afresh between Shortest and Longest, most often near Usual.")]
@@ -352,6 +359,7 @@ public class ExileInput2Settings : ISettings
         ArcPercent.Value = defaults.ArcPercent.Value;
         StopTolerancePx.Value = defaults.StopTolerancePx.Value;
         ArriveTimeoutMs.Value = defaults.ArriveTimeoutMs.Value;
+        MostMoveTimePerFrameMs.Value = defaults.MostMoveTimePerFrameMs.Value;
         ClaimExpirySeconds.Value = defaults.ClaimExpirySeconds.Value;
         ClickHoldShortestMs.Value = defaults.ClickHoldShortestMs.Value;
         ClickHoldUsualMs.Value = defaults.ClickHoldUsualMs.Value;

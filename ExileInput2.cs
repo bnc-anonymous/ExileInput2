@@ -276,6 +276,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             ? perRootPixel * ExileInput2Settings.SeedFactor(Settings.Seed, 2)
             : Settings.UsedTravelMsPerRootPx;
         pointer.ArcPercent = Settings.UsedArcPercent;
+        pointer.MostMoveTimePerFrameMs = Settings.MostMoveTimePerFrameMs.Value;
         pointer.StayPut = Settings.StayPut.Value;
         pointer.OnModifier ??= key => KeysFor(who).Hold(key);
         pointer.TolerancePx = _tolerances.TryGetValue(who, out var px) ? px : Settings.TolerancePx.Value;
