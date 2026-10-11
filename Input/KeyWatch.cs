@@ -33,13 +33,12 @@ internal static class KeyWatch
 
     /// <summary>
     /// A key the block let go of while the player held it, for Restore to press again. See ExileInput2.BlockPlayerKeys.
-    /// The undirected Shift, Ctrl and Alt (0x10-0x12) are left out: the hook reports the sided codes (0xA0-0xA5), so a
-    /// physical release during the block would never take the undirected one off, and Restore would press it stuck.
-    /// The sided code, held at the same time, stands for it.
+    /// Only the letters A-Z, the digits 0-9 and Space are kept. A modifier, function key or any other key is let go and
+    /// stays up, so nothing pressed again can form a combination such as Alt+F4.
     /// </summary>
     public static void NoteHeld(int key)
     {
-        if (key is < 0x10 or > 0x12)
+        if (key is >= 'A' and <= 'Z' or >= '0' and <= '9' or 0x20)
             HeldThroughBlock[key] = 0;
     }
 
