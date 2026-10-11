@@ -83,12 +83,6 @@ public class ExileInput2Settings : ISettings
         "mouse stops it.")]
     public RangeNode<int> ArriveTimeoutMs { get; set; } = new RangeNode<int>(1500, 100, 10000);
 
-    [Menu("Hold A Modifier For (ms)",
-        "How long control or shift is held either side of a click.\n\n" +
-        "Small and not optional. On a currency item the difference between ctrl+right and right is " +
-        "the difference between putting it away and picking it up.")]
-    public RangeNode<int> ModifierHoldMs { get; set; } = new RangeNode<int>(60, 0, 200);
-
     [Menu("Drop An Idle Claim After (s)",
         "How long a plugin may hold the cursor without using it before the claim is taken off it.\n\n" +
         "There is one cursor and there may be several plugins, so one takes it at a time. A plugin " +
@@ -101,7 +95,7 @@ public class ExileInput2Settings : ISettings
 
     /// <summary>
     /// This install's own seed. It shuffles the noise every journey is shaped by - where the aim wanders, how a path
-    /// bows, when a modifier goes down - and moves each of the feel settings 10 to 20 per cent up or down from its slider
+    /// bows - and moves each of the feel settings 10 to 20 per cent up or down from its slider
     /// (see Varied). Drawn at random the first time the plugin starts (see SeedDrawn) and kept, so each install keeps one
     /// habit of its own across sessions. Nought means none: Perlin's own noise, and the sliders used as they are.
     /// </summary>
@@ -153,7 +147,7 @@ public class ExileInput2Settings : ISettings
     [JsonIgnore]
     [Menu("Seed",
         "This install's own seed. It shapes every move - where the aim wanders, how a path\n" +
-        "bows, when a modifier goes down - and moves each feel setting above 10 to 20 per\n" +
+        "bows - and moves each feel setting above 10 to 20 per\n" +
         "cent up or down from its slider; the values below are the ones used. Drawn at\n" +
         "random the first time the plugin starts.\n\n" +
         "Nought uses the sliders as they are. Reset to defaults puts the sliders back and\n" +
@@ -171,7 +165,6 @@ public class ExileInput2Settings : ISettings
         ("Shortest Move (ms)", MinTravelMs),
         ("Move Time Per Root Pixel (ms)", TravelMsPerRootPx),
         ("Path Bow (%)", ArcPercent),
-        ("Hold A Modifier For (ms)", ModifierHoldMs),
     ];
 
     /// <summary>
@@ -204,8 +197,6 @@ public class ExileInput2Settings : ISettings
     internal int UsedTravelMsPerRootPx => Used(2);
 
     internal int UsedArcPercent => Used(3);
-
-    internal int UsedModifierHoldMs => Used(4);
 
     private void DrawSeed()
     {
@@ -252,7 +243,6 @@ public class ExileInput2Settings : ISettings
         ArcPercent.Value = defaults.ArcPercent.Value;
         StopTolerancePx.Value = defaults.StopTolerancePx.Value;
         ArriveTimeoutMs.Value = defaults.ArriveTimeoutMs.Value;
-        ModifierHoldMs.Value = defaults.ModifierHoldMs.Value;
         ClaimExpirySeconds.Value = defaults.ClaimExpirySeconds.Value;
     }
 

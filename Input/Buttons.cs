@@ -1,4 +1,5 @@
 using ExileCore2;
+using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
 
@@ -184,6 +185,8 @@ internal static class Buttons
     /// </summary>
     public static void LetGo()
     {
+        EndPress();
+
         if (_left)
         {
             Input.LeftUp();
@@ -203,17 +206,111 @@ internal static class Buttons
     private static bool _left;
     private static bool _right;
 
-    public static void Press(bool right)
+    /// <summary>
+    /// Puts a button down for a click and leaves it there for holdMs, after which Step brings it up. Nothing waits: the
+    /// release comes from the plugin's own tick, whoever holds the cursor by then, so a caller letting go of the cursor
+    /// straight after its click does not cut the hold short. A click already down is brought up first.
+    ///
+    /// It was a down and an up in one call, held for no time at all; a person's click is held 50 to 100 ms. See
+    /// HumanTiming.
+    /// </summary>
+    public static void Press(bool right, int holdMs)
     {
+        if (_pressUpAt != 0)
+            EndPress();
+
         if (right)
-        {
             Input.RightDown();
-            Input.RightUp();
-        }
         else
-        {
             Input.LeftDown();
-            Input.LeftUp();
+
+        _pressRight = right;
+        _pressUpAt = Environment.TickCount64 + Math.Max(0, holdMs);
+    }
+
+    /// <summary>When the button of the click in hand comes up, as Environment.TickCount64; 0 with none down.</summary>
+    private static long _pressUpAt;
+
+    private static bool _pressRight;
+
+    /// <summary>What to do once the click's button is up and AfterPressMs more has gone by: let go of its modifiers.</summary>
+    private static Action _afterPress;
+
+    private static int _afterPressMs;
+
+    /// <summary>When the after-press action is due, once the button is up; 0 until then.</summary>
+    private static long _afterPressAt;
+
+    /// <summary>Whether a click's button is down now. See Press.</summary>
+    public static bool PressHeld => _pressUpAt != 0;
+
+    /// <summary>How long until the click's button comes up, in milliseconds; 0 with none down.</summary>
+    public static int MsUntilPressUp => _pressUpAt == 0 ? 0 : (int)Math.Max(0L, _pressUpAt - Environment.TickCount64);
+
+    /// <summary>
+    /// Does this delayMs after the click's button comes up, or after now with none down: how a caller giving the cursor
+    /// back mid-click still lets go of ctrl after the button rather than before it. A second request replaces the first.
+    /// </summary>
+    public static void AfterPress(int delayMs, Action act)
+    {
+        _afterPress = act;
+        _afterPressMs = Math.Max(0, delayMs);
+        _afterPressAt = _pressUpAt == 0 ? Environment.TickCount64 + _afterPressMs : 0;
+    }
+
+    /// <summary>Brings a click's button up when its hold is over, then runs what was to follow it. Called every tick.</summary>
+    public static void Step()
+    {
+        var now = Environment.TickCount64;
+
+        if (_pressUpAt != 0 && now >= _pressUpAt)
+        {
+            Up(_pressRight);
+            _pressUpAt = 0;
+
+            if (_afterPress != null)
+                _afterPressAt = now + _afterPressMs;
+        }
+
+        if (_afterPress != null && _pressUpAt == 0 && _afterPressAt != 0 && now >= _afterPressAt)
+        {
+            var act = _afterPress;
+            _afterPress = null;
+            _afterPressAt = 0;
+            act();
+        }
+    }
+
+    /// <summary>Brings a click's button up now and runs what was to follow it, for a stop or an unload.</summary>
+    public static void EndPress()
+    {
+        if (_pressUpAt != 0)
+        {
+            Up(_pressRight);
+            _pressUpAt = 0;
+        }
+
+        if (_afterPress != null)
+        {
+            var act = _afterPress;
+            _afterPress = null;
+            _afterPressAt = 0;
+            act();
+        }
+    }
+
+    private static void Up(bool right)
+    {
+        try
+        {
+            if (right)
+                Input.RightUp();
+            else
+                Input.LeftUp();
+        }
+        catch
+        {
+            // Nothing more to be done; LetGo tries again on the way out.
         }
     }
 

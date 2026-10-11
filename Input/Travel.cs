@@ -44,17 +44,27 @@ internal sealed class Travel
     /// </summary>
     private readonly Func<TimeSpan> _now;
 
-    private TimeSpan Elapsed => _now?.Invoke() ?? _since.Elapsed;
+    /// <summary>The injected clock's reading when the journey was made; unused with the stopwatch.</summary>
+    private readonly TimeSpan _madeAt;
+
+    /// <summary>How long after it was made the journey sets off. See MousePointer.MoveDelayMs.</summary>
+    private readonly float _delayMs;
+
+    /// <summary>Time since the journey set off: negative while it waits to.</summary>
+    private TimeSpan Elapsed => (_now != null ? _now() - _madeAt : _since.Elapsed) - TimeSpan.FromMilliseconds(_delayMs);
 
     /// <param name="drift">
     /// Where on the noise this journey sits. Advanced a little per journey by whoever owns the
     /// pointer, so consecutive reaches bow SIMILARLY rather than independently - see the comment on
     /// the bow itself.
     /// </param>
+    /// <param name="delayMs">How long the journey waits before setting off: while a click's button is still down.</param>
     public Travel(Vector2 from, Vector2 to, float minMs, float msPerRootPx, float arcPercent,
-        float drift, Func<TimeSpan> now = null)
+        float drift, Func<TimeSpan> now = null, float delayMs = 0f)
     {
         _now = now;
+        _madeAt = now?.Invoke() ?? TimeSpan.Zero;
+        _delayMs = Math.Max(0f, delayMs);
 
         _from = from;
         _to = to;
@@ -105,6 +115,9 @@ internal sealed class Travel
 
     public bool Done => Progress >= 1f;
 
+    /// <summary>How long is left of the journey, in milliseconds, its wait to set off included.</summary>
+    public float RemainingMs => Math.Max(0f, _ms - (float)Elapsed.TotalMilliseconds);
+
     /// <summary>How far through the journey a given elapsed time is.</summary>
     public float ProgressAt(float ms) => Math.Clamp(ms / _ms, 0f, 1f);
 
@@ -138,23 +151,4 @@ internal sealed class Travel
         return Vector2.Lerp(a, b, eased);
     }
 
-    /// <summary>
-    /// Where a modifier should go down, as a fraction of the journey.
-    ///
-    /// Not at the start and not on arrival. Reaching for control before deciding where to click is
-    /// not what a hand does, and pressing it on arrival is the tell this exists to remove - it
-    /// makes the gesture strictly sequential, one thing at a time, in a way nothing physical is.
-    ///
-    /// The last third, varied per journey. It also happens to be the reliable choice: the key needs
-    /// confirming before the click, and confirming it during the approach costs nothing where
-    /// confirming it on arrival costs up to two hundred milliseconds of poll with the pointer
-    /// sitting still on the target.
-    ///
-    /// From the noise for the same reason the bow is: somebody's timing of a modifier against a
-    /// reach is a habit that shifts slowly, not a fresh decision every time. Sampled well away from
-    /// the bow's line so the two are not the same wander - a journey that bows further would
-    /// otherwise always be one that pressed later.
-    /// </summary>
-    public static float ModifierAt(float drift) =>
-        0.55f + (PerlinNoise.Full(0f, drift + 1024f) + 1f) * 0.5f * 0.3f;
 }

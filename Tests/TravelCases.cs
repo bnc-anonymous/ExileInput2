@@ -259,31 +259,47 @@ internal static class TravelCases
             Console.WriteLine();
         }
 
-        // Not a case of its own because it is about the pair, not about a journey: the modifier
-        // must go down after the approach has started and before it ends, or the gesture is
-        // sequential again and the whole point of pressing it in flight is lost.
+        // Not a case of its own because it is about the timing, not about a journey: how long a button is held, how long
+        // before arrival a modifier goes down and how long after the button it comes up are each one draw of this. See
+        // HumanTiming.
         var rngAt = new Random(20260818);
-        var atDrift = 0f;
-
-        var ats = Enumerable.Range(0, 1000).Select(_ =>
-        {
-            atDrift += 0.19f + (float)rngAt.NextDouble() * 0.19f;
-            return Travel.ModifierAt(atDrift);
-        }).ToArray();
-        var atOk = ats.Min() > 0.5f && ats.Max() < 0.9f;
+        var draws = Enumerable.Range(0, 10000).Select(_ => HumanTiming.Ms(rngAt)).ToArray();
+        var mean = draws.Average();
+        var commonest = draws.GroupBy(d => d / 10).OrderByDescending(g => g.Count()).First().Key * 10;
+        var atOk = draws.Min() >= HumanTiming.Least && draws.Max() <= HumanTiming.Most &&
+                   mean is > 74d and < 79.5d && commonest is >= 70 and < 90;
 
         if (!atOk)
             failed++;
 
-        Console.WriteLine($"{(atOk ? "  ok  " : "FAIL  ")}8  The modifier goes down in the last third");
-        Console.WriteLine("        want  after the approach has started and before it lands");
-        Console.WriteLine($"        got   {ats.Min():0.###} to {ats.Max():0.###} of the way");
-        Console.WriteLine("        why   reaching for control before deciding where to click is not what a hand");
-        Console.WriteLine("              does, and pressing it on arrival is the tell this exists to remove - it");
-        Console.WriteLine("              makes the gesture strictly one thing at a time. It is also the reliable");
-        Console.WriteLine("              choice: the key needs confirming before the click, and confirming it");
-        Console.WriteLine("              during the approach costs nothing where confirming it on arrival costs");
-        Console.WriteLine("              up to 200ms of polling with the pointer sitting still on the target");
+        Console.WriteLine($"{(atOk ? "  ok  " : "FAIL  ")}8  A click's timings fall between 50 and 100ms, most often near 80");
+        Console.WriteLine("        want  every draw from 50 to 100ms; the mean near 76.7, a triangle's; the commonest ten near 80");
+        Console.WriteLine($"        got   {draws.Min()} to {draws.Max()}ms, mean {mean:0.0}, commonest {commonest}-{commonest + 9}ms");
+        Console.WriteLine("        why   the player's own ctrl+clicks, recorded: the button held 62 to 110ms, ctrl down 47 to");
+        Console.WriteLine("              141ms before the click. A click held for no time, as before, is a thing no hand does");
+        Console.WriteLine();
+
+        // A journey asked for while a click's button is still down waits for it: moving with the button held is a drag.
+        var clock = TimeSpan.Zero;
+        var waiting = new Travel(new Vector2(100f, 100f), new Vector2(400f, 300f), 60f, 8f, 0f, 0f, () => clock, 80f);
+        clock = TimeSpan.FromMilliseconds(40);
+        var stillAt40 = waiting.Progress == 0f && waiting.Now() == new Vector2(100f, 100f);
+        var remainingAt40 = waiting.RemainingMs;
+        clock = TimeSpan.FromMilliseconds(100);
+        var movingAt100 = waiting.Progress > 0f;
+        clock = TimeSpan.FromMilliseconds(80 + waiting.Ms + 1);
+        var doneAfter = waiting.Done;
+        var waitOk = stillAt40 && movingAt100 && doneAfter && Math.Abs(remainingAt40 - (waiting.Ms + 40f)) < 1f;
+
+        if (!waitOk)
+            failed++;
+
+        Console.WriteLine($"{(waitOk ? "  ok  " : "FAIL  ")}9  A journey asked for with a click's button down waits for the button");
+        Console.WriteLine("        want  at the start point until 80ms, moving after, done at 80ms plus its length");
+        Console.WriteLine($"        got   still at 40ms {stillAt40}, moving at 100ms {movingAt100}, done after {doneAfter}, " +
+                          $"remaining at 40ms {remainingAt40:0}, want {waiting.Ms + 40f:0}");
+        Console.WriteLine("        why   the button of a click is held 50 to 100ms and the next move is often asked for at once;");
+        Console.WriteLine("              moving with the button held is a drag");
         Console.WriteLine();
 
         // The bow, journey to journey. A hand reaching between the same two places repeatedly takes

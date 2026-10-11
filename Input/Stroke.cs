@@ -14,7 +14,8 @@ internal interface IButtons
     bool IsDown(Keys key);
     bool AllDown(IReadOnlyList<Keys> keys);
     void Hold(IReadOnlyList<Keys> keys);
-    void Press(bool right);
+    void Press(bool right, int holdMs);
+    bool PressHeld { get; }
     void Release();
 }
 
@@ -27,7 +28,8 @@ internal sealed class RealButtons : IButtons
     public bool IsDown(Keys key) => Buttons.IsDown(key);
     public bool AllDown(IReadOnlyList<Keys> keys) => Buttons.AllDown(keys);
     public void Hold(IReadOnlyList<Keys> keys) => Buttons.Hold(keys);
-    public void Press(bool right) => Buttons.Press(right);
+    public void Press(bool right, int holdMs) => Buttons.Press(right, holdMs);
+    public bool PressHeld => Buttons.PressHeld;
     public void Release() => Buttons.Release();
 }
 
@@ -56,7 +58,7 @@ internal sealed class Stroke
         /// <summary>The modifier is down and we are waiting to believe it.</summary>
         Settling,
 
-        /// <summary>The click has gone; the modifier is being held a moment before it comes up.</summary>
+        /// <summary>The click has gone; the modifier stays down until the button is up and a moment after.</summary>
         Letting,
     }
 
@@ -67,6 +69,18 @@ internal sealed class Stroke
     private Phase _phase;
     private bool _right;
     private TimeSpan _at;
+
+    /// <summary>How long the modifier is down before the click, drawn when it goes down. See HumanTiming.</summary>
+    private int _leadMs;
+
+    /// <summary>How long the modifier stays down after the button comes up, drawn at the click. See HumanTiming.</summary>
+    private int _releaseMs;
+
+    /// <summary>When the button was seen up after the click; null until it is.</summary>
+    private TimeSpan? _buttonUpAt;
+
+    /// <summary>One draw of a click's timings, in milliseconds. HumanTiming's by default; fixed by the tests.</summary>
+    internal Func<int> TimingMs { get; set; } = HumanTiming.Ms;
 
     public Stroke(IButtons keys = null) => _keys = keys ?? new RealButtons();
 
@@ -79,9 +93,6 @@ internal sealed class Stroke
 
     /// <summary>How long to keep asking whether the modifier is down before giving up on it.</summary>
     public int ConfirmMs { get; set; } = 200;
-
-    /// <summary>How long the modifier stays down around the click.</summary>
-    public int HoldMs { get; set; } = 60;
 
     /// <summary>Told when the keys come up, so the caller's own bookkeeping can follow.</summary>
     public Action OnLetGo { get; set; }
@@ -101,9 +112,13 @@ internal sealed class Stroke
     {
         // Nothing held means nothing to confirm and nothing to let go of. This is most clicks, and
         // it never waited even under the old arrangement.
+        // A click whose button is still down is not over: another press now would be a down on a down.
+        if (_keys.PressHeld)
+            return false;
+
         if (!Modifier.Any(modifiers))
         {
-            _keys.Press(right);
+            _keys.Press(right, TimingMs());
             return true;
         }
 
@@ -119,22 +134,23 @@ internal sealed class Stroke
             _phase = Phase.Settling;
             _right = right;
             _at = Reading;
+            _leadMs = TimingMs();
         }
 
         // Every requested modifier, not just control. This used to strike immediately whenever
         // control was not among them, on the grounds that shift had no readback - it does, and so
-        // does alt, and an unverified modifier is one that can silently fail to take.
+        // does alt, and an unverified modifier is one that can silently fail to take. Once down, the
+        // click still waits out the lead: a person's ctrl goes down 50 to 100 ms before the click.
         if (_keys.AllDown(modifiers))
         {
             _keys.Answered();
-            return Strike();
+            return SinceMs >= _leadMs && Strike();
         }
 
         // Where the state has never once been readable there is nothing to wait for either - but
-        // there is then no evidence at all, and the pause is what is left. This is the one place
-        // the old sleep did real work, and the only place it survives as a wait.
+        // there is then no evidence at all, and the lead is what is left.
         if (_keys.Readable == false)
-            return SinceMs >= HoldMs && Strike();
+            return SinceMs >= _leadMs && Strike();
 
         if (SinceMs < ConfirmMs)
             return false;
@@ -164,7 +180,7 @@ internal sealed class Stroke
     /// </summary>
     public bool StraightIn(bool right)
     {
-        if (_phase == Phase.Letting)
+        if (_phase == Phase.Letting || _keys.PressHeld)
             return false;
 
         _right = right;
@@ -173,18 +189,28 @@ internal sealed class Stroke
 
     private bool Strike()
     {
-        _keys.Press(_right);
+        _keys.Press(_right, TimingMs());
 
         _phase = Phase.Letting;
         _at = Reading;
+        _releaseMs = TimingMs();
+        _buttonUpAt = null;
 
         return true;
     }
 
-    /// <summary>Advances the gesture. Called every tick by whoever owns this.</summary>
+    /// <summary>
+    /// Advances the gesture: once the click's button is up, and its release time after that, the modifier comes up.
+    /// Called every tick by whoever owns this.
+    /// </summary>
     public void Step()
     {
-        if (_phase == Phase.Letting && SinceMs >= HoldMs)
+        if (_phase != Phase.Letting || _keys.PressHeld)
+            return;
+
+        _buttonUpAt ??= Reading;
+
+        if ((Reading - _buttonUpAt.Value).TotalMilliseconds >= _releaseMs)
             LetGo();
     }
 

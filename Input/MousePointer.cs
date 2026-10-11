@@ -309,10 +309,20 @@ internal sealed class MousePointer
     /// <summary>The journey in progress, or null when the cursor is where it was put.</summary>
     private Travel _travel;
 
-    /// <summary>What to press partway through, and where.</summary>
+    /// <summary>
+    /// What to press on the way, and how long before arrival: a draw from HumanTiming per journey, so the modifier goes
+    /// down 50 to 100 ms before the cursor lands - mid-move on a longer journey, at the start of one shorter than that.
+    /// It was a fraction of the way along, 55 to 85%, which on a 100 ms hop meant 15 to 45 ms before the click.
+    /// </summary>
     private Keys[] _modifiers = [];
-    private float _modifierAt;
+    private int _modifierLeadMs;
     private bool _modifiersDown;
+
+    /// <summary>
+    /// How long a journey must wait before setting off, in milliseconds: while a click's button is still down, so the
+    /// cursor does not move with it held, which the game would read as a drag. Asked at each Place; none when unset.
+    /// </summary>
+    public Func<int> MoveDelayMs { get; set; }
 
     /// <summary>Told when the journey presses its modifier, so somebody can release it later.</summary>
     public Action<Keys> OnModifier { get; set; }
@@ -676,21 +686,30 @@ internal sealed class MousePointer
         _journey += JourneyStep + (float)_rng.NextDouble() * JourneyStep;
 
         _modifiers = modifiers ?? [];
-        _modifierAt = Travel.ModifierAt(_journey);
+        _modifierLeadMs = HumanTiming.Ms(_rng);
         _modifiersDown = false;
+
+        var delayMs = Math.Max(0, MoveDelayMs?.Invoke() ?? 0);
 
         // Nought means teleport, which is what this did before travel existed and is worth keeping
         // - it is the setting to reach for when something is going wrong and the question is
-        // whether the path is why.
+        // whether the path is why. With a button still down it waits as a journey of no length.
         if (TravelMsPerRootPx <= 0)
         {
-            _travel = null;
             PressModifiers();
+
+            if (delayMs > 0)
+            {
+                _travel = new Travel(from, client, 1f, 0f, 0f, _journey, Clock, delayMs);
+                return;
+            }
+
+            _travel = null;
             Put(client);
             return;
         }
 
-        _travel = new Travel(from, client, MinTravelMs, TravelMsPerRootPx, ArcPercent, _journey, Clock);
+        _travel = new Travel(from, client, MinTravelMs, TravelMsPerRootPx, ArcPercent, _journey, Clock, delayMs);
     }
 
     /// <summary>
@@ -728,7 +747,7 @@ internal sealed class MousePointer
         if (_travel == null)
             return;
 
-        if (!_modifiersDown && _travel.Progress >= _modifierAt)
+        if (!_modifiersDown && _travel.RemainingMs <= _modifierLeadMs)
             PressModifiers();
 
         Put(_travel.Now());

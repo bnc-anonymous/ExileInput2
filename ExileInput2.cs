@@ -252,6 +252,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (!_pointers.TryGetValue(who, out var pointer))
             _pointers[who] = pointer = new MousePointer(GameController);
 
+        // A journey waits while a click's button is still down. See Buttons.Press.
+        pointer.MoveDelayMs ??= () => Buttons.MsUntilPressUp;
+
         // The feel settings as the seed moves them; the rest as set. See ExileInput2Settings.Varied.
         pointer.SpreadPercent = Settings.UsedSpreadPercent;
         // A caller's own shortest move in place of the menu's, where it asked for one, moved by the seed as the menu's
@@ -699,7 +702,6 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // So it fails closed now. Anything short of "the key is down and we can see it" goes the
         // long way, which confirms or refuses rather than assuming.
         var stroke = StrokeFor(who);
-        stroke.HoldMs = Settings.UsedModifierHoldMs;
 
         if (Gesture.StraightIn(modifiers, pointer.ModifiersReady, Buttons.IsDown))
             return Pressed(pointer, stroke.StraightIn(right));
@@ -817,10 +819,32 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (!_lease.Held(who))
             return stopped;
 
-        KeysFor(who).ReleaseAll();
-        Buttons.Release();
+        // A click whose button is still down keeps its modifiers until the button is up and a moment after, as it would
+        // have had the caller kept the cursor; letting go of ctrl first would end the click as a plain one.
+        if (Buttons.PressHeld)
+        {
+            var keys = KeysFor(who);
+
+            Buttons.AfterPress(HumanTiming.Ms(), () =>
+            {
+                keys.ReleaseAll();
+                Buttons.Release();
+            });
+        }
+        else
+        {
+            KeysFor(who).ReleaseAll();
+            Buttons.Release();
+        }
+
         PointerFor(who).IgnorePlayerFor(0);
-        MouseBlock.Stop();
+
+        // A blocked mouse stays blocked until a click's button is up: moving it with the button down is a drag.
+        if (Buttons.PressHeld && MouseBlock.Blocking)
+            MouseBlock.Block(Buttons.MsUntilPressUp);
+        else
+            MouseBlock.Stop();
+
         ForgetKeyStop(who);
         _lease.Release(who);
         return true;
@@ -829,6 +853,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     public override void Tick()
     {
         _lease.Expiry = TimeSpan.FromSeconds(Settings.ClaimExpirySeconds.Value);
+
+        // A click's button comes up when its hold is over, whoever holds the cursor now. See Buttons.Press.
+        Buttons.Step();
 
         // The seed changed in the menu. See ExileInput2Settings.Seed.
         if (Settings.Seed != _seedInUse)
@@ -888,6 +915,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         {
             // Whatever was mid-gesture is not going to finish, so it is dropped rather than left
             // holding a modifier that turns the player's next click into something else.
+            Buttons.EndPress();
             StrokeFor(_held).Abandon();
             KeysFor(_held).ReleaseAll();
             Buttons.Release();
@@ -910,6 +938,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// </summary>
     private void Abandon(string who, StopReason reason)
     {
+        Buttons.EndPress();
         StrokeFor(who).Abandon();
         KeysFor(who).ReleaseAll();
         Buttons.Release();
