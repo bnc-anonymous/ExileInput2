@@ -601,9 +601,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (ms > 0)
         {
             // Let go of what the player is holding: a held W keeps the character walking whatever arrives after it.
+            // The Windows keys (0x5B, 0x5C) are left alone: a let-go with nothing pressed between opens the Start menu.
             for (var key = 0x07; key <= 0xFE; key++)
             {
-                if ((GetAsyncKeyState(key) & 0x8000) != 0)
+                if (key is not (0x5B or 0x5C) && (GetAsyncKeyState(key) & 0x8000) != 0)
                 {
                     KeyWatch.NoteHeld(key);
                     Safe(() => ExileCore2.Input.KeyUp((Keys)key));

@@ -12,7 +12,7 @@ namespace ExileInput2;
 /// A low-level keyboard hook on a thread of its own, installed while watching or blocking and removed when neither. A
 /// key-down without the injected flag is the player's; keys this plugin sends carry the flag and pass. Watching queues
 /// the player's key-downs by virtual-key code for the next tick to read; blocking drops them before the game sees them.
-/// A key-up always passes, so no key is left down. The keys still held when a block ends are pressed again. See Restore.
+/// A key-up always passes, so no key is left down. The keys held when a block began and still held when it ends are pressed again. See Restore.
 /// </summary>
 internal static class KeyWatch
 {
@@ -24,8 +24,9 @@ internal static class KeyWatch
     private static readonly LowLevelKeyboardProc Proc = Hook;
 
     /// <summary>
-    /// The keys the player is holding through a block: those let go when it began, and those pressed during it, less
-    /// any let go since - by virtual-key code. Pressed again when the block ends, so a walk on a held A goes on. Windows
+    /// The keys the player is holding through a block: those let go when it began, less any let go since - by
+    /// virtual-key code. A key first pressed during the block is dropped and never added, so no combination the game
+    /// never saw, such as Alt+F4, is sent at the end. Pressed again when the block ends, so a walk on a held A goes on. Windows
     /// cannot be asked instead: after the let-go its key state reads up, finger on the key or not. See Restore.
     /// </summary>
     private static readonly ConcurrentDictionary<int, byte> HeldThroughBlock = new();
@@ -173,12 +174,11 @@ internal static class KeyWatch
 
             if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0)
             {
-                // Dropped, and remembered as held, for Restore.
+                // Dropped, and not remembered for Restore: only a key already held when the block began is pressed
+                // again. Remembering presses made during the block would let Alt then F4, both pressed while blocked,
+                // arrive together when it ends and close the game.
                 if (Blocking)
-                {
-                    HeldThroughBlock[(int)info.VirtualKey] = 0;
                     return 1;
-                }
 
                 if (_watching)
                     Pressed.Enqueue((int)info.VirtualKey);
