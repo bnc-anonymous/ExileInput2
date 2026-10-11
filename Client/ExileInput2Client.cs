@@ -69,6 +69,7 @@ public sealed class ExileInput2Client
     private Func<string, Keys[], bool> _stopOnPlayerKeys;
     private Func<string, int, bool, Keys, bool> _blockPlayerKeys;
     private Func<string, bool> _keyBlockCancelled;
+    private Func<string, Vector2[], bool[], Keys[], bool, bool> _planClicks;
     private Func<string, string> _stopped;
 
     private Func<string, string> _stopDetail;
@@ -171,6 +172,7 @@ public sealed class ExileInput2Client
             _stopOnPlayerKeys = b.GetMethod<Func<string, Keys[], bool>>("ExileInput2.StopOnPlayerKeys");
             _blockPlayerKeys = b.GetMethod<Func<string, int, bool, Keys, bool>>("ExileInput2.BlockPlayerKeys");
             _keyBlockCancelled = b.GetMethod<Func<string, bool>>("ExileInput2.KeyBlockCancelled");
+            _planClicks = b.GetMethod<Func<string, Vector2[], bool[], Keys[], bool, bool>>("ExileInput2.PlanClicks");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
         }
@@ -464,6 +466,19 @@ public sealed class ExileInput2Client
     {
         Look();
         return _keyBlockCancelled?.Invoke(_me) ?? false;
+    }
+
+    /// <summary>
+    /// A queue of clicks at these client points, in order - a right click where rights says so, all with these
+    /// modifiers - planned now and, with show, drawn on screen: each path, an L or R where a button goes down (bright)
+    /// and comes up (dim), and C, S or A where a modifier does. Still move to each point and click in turn; a move to the
+    /// next point makes the journey drawn, and a move anywhere else drops the queue. Empty points drop it. Needs the
+    /// cursor taken. False from an ExileInput2 too old to have it.
+    /// </summary>
+    public bool PlanClicks(Vector2[] points, bool[] rights, Keys[] modifiers, bool show)
+    {
+        Look();
+        return _planClicks?.Invoke(_me, points, rights, modifiers, show) ?? false;
     }
 
     /// <summary>Presses and releases a key.</summary>

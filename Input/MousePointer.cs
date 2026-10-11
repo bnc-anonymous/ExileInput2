@@ -676,7 +676,25 @@ internal sealed class MousePointer
     /// aiming at a point twice as far from the top left as it meant to, which on a 4K monitor is
     /// off the screen entirely.
     /// </summary>
-    public void Place(Vector2 client, params Keys[] modifiers)
+    public void Place(Vector2 client, params Keys[] modifiers) =>
+        PlaceAlong(client, modifiers, NextJourney(), ModifierLeadMs?.Invoke() ?? HumanTiming.Ms(_rng));
+
+    /// <summary>
+    /// Where on the noise the next journey sits: advanced once per journey, and by an uneven step so the wander is not
+    /// periodic - the same reason the aim's own line is stepped unevenly. Taken ahead of time by a planned queue of
+    /// clicks, so the journeys it draws are the ones made. See ClickPlan.
+    /// </summary>
+    public float NextJourney()
+    {
+        _journey += JourneyStep + (float)_rng.NextDouble() * JourneyStep;
+        return _journey;
+    }
+
+    /// <summary>
+    /// Place, with the journey's drift and its modifier's lead given rather than drawn: for a planned click, so the
+    /// journey made is the one drawn. See ClickPlan.
+    /// </summary>
+    public void PlaceAlong(Vector2 client, Keys[] modifiers, float drift, int modifierLeadMs)
     {
         // Where the cursor is now goes on the record before anything is sent, because for the next
         // frame or several that is what the game will still be reporting. Without it the very
@@ -690,12 +708,8 @@ internal sealed class MousePointer
         _bound = float.MaxValue;
         _placedAt = Now();
 
-        // Advanced once per journey, and by an uneven step so the wander is not periodic - the same
-        // reason the aim's own line is stepped unevenly.
-        _journey += JourneyStep + (float)_rng.NextDouble() * JourneyStep;
-
         _modifiers = modifiers ?? [];
-        _modifierLeadMs = ModifierLeadMs?.Invoke() ?? HumanTiming.Ms(_rng);
+        _modifierLeadMs = modifierLeadMs;
         _modifiersDown = false;
 
         var delayMs = Math.Max(0, MoveDelayMs?.Invoke() ?? 0);
@@ -709,7 +723,7 @@ internal sealed class MousePointer
 
             if (delayMs > 0)
             {
-                _travel = new Travel(from, client, 1f, 0f, 0f, _journey, Clock, delayMs);
+                _travel = new Travel(from, client, 1f, 0f, 0f, drift, Clock, delayMs);
                 return;
             }
 
@@ -718,7 +732,7 @@ internal sealed class MousePointer
             return;
         }
 
-        _travel = new Travel(from, client, MinTravelMs, TravelMsPerRootPx, ArcPercent, _journey, Clock, delayMs);
+        _travel = new Travel(from, client, MinTravelMs, TravelMsPerRootPx, ArcPercent, drift, Clock, delayMs);
     }
 
     /// <summary>

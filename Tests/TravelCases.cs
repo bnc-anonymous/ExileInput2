@@ -302,6 +302,33 @@ internal static class TravelCases
         Console.WriteLine("              moving with the button held is a drag");
         Console.WriteLine();
 
+        // A planned queue of ctrl+clicks: the first presses ctrl with a lead of its own, the rest carry it; each journey
+        // starts where the last landed and ends on its point; and a journey made from a planned drift follows the path
+        // drawn for it. See ClickPlan.
+        var planned = new MousePointer(null, new Random(20261011)) { MinTravelMs = 60f, TravelMsPerRootPx = 6f, ArcPercent = 7f };
+        var planPoints = new[] { new Vector2(300f, 200f), new Vector2(360f, 210f), new Vector2(420f, 260f) };
+        var plan = ClickPlan.Make(planned, new Vector2(100f, 100f), planPoints, [false, true, false],
+            Modifier.Of(true, false, false), true, () => 64, () => 72);
+        var items = plan.Items;
+        var leadsOk = items[0].LeadMs == 72 && !items[0].Carried && items.Skip(1).All(p => p.Carried && p.LeadMs == 0);
+        var chainOk = items[0].From == new Vector2(100f, 100f) && items[1].From == planPoints[0] && items[2].From == planPoints[1];
+        var endsOk = items.All(p => Vector2.Distance(p.Path.At(1f), p.To) < 0.01f);
+        var again = new Travel(items[1].From, items[1].To, 60f, 6f, 7f, items[1].Drift);
+        var sameOk = Enumerable.Range(0, 11).All(k => Vector2.Distance(again.At(k / 10f), items[1].Path.At(k / 10f)) < 0.01f);
+        var planOk = leadsOk && chainOk && endsOk && sameOk && items[1].Right && !items[0].Right;
+
+        if (!planOk)
+            failed++;
+
+        Console.WriteLine($"{(planOk ? "  ok  " : "FAIL  ")}10 A planned queue of ctrl+clicks presses ctrl once and draws the journeys it makes");
+        Console.WriteLine("        want  the first with a lead, the rest carried; each from the last point to its own; the same path again");
+        Console.WriteLine($"        got   leads {string.Join("/", items.Select(p => p.LeadMs))}, carried " +
+                          $"{string.Join("/", items.Select(p => p.Carried))}, chained {chainOk}, ends on its points {endsOk}, " +
+                          $"made the same {sameOk}");
+        Console.WriteLine("        why   the plan is drawn on screen before it is made, so a journey made from it has to be the one");
+        Console.WriteLine("              drawn; and a batch of ctrl+clicks holds ctrl through, as the player does");
+        Console.WriteLine();
+
         // The bow, journey to journey. A hand reaching between the same two places repeatedly takes
         // much the same path each time, and that path shifts over minutes - it does not curve left,
         // then hard right, then left again. Measured as how far the bow moves between consecutive

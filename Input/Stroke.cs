@@ -82,6 +82,30 @@ internal sealed class Stroke
     /// <summary>The modifiers this gesture holds, for HoldingAfterClick. Empty for none, or none known.</summary>
     private Keys[] _held = Modifier.None;
 
+    /// <summary>The next click's button hold and modifier release, given by a planned click; null to draw them.</summary>
+    private int? _nextHoldMs, _nextReleaseMs;
+
+    /// <summary>Gives the next click its button hold and modifier release, as a planned click has them. See ClickPlan.</summary>
+    public void UseNext(int holdMs, int releaseMs)
+    {
+        _nextHoldMs = holdMs;
+        _nextReleaseMs = releaseMs;
+    }
+
+    private int TakeHoldMs()
+    {
+        var ms = _nextHoldMs ?? HoldMs();
+        _nextHoldMs = null;
+        return ms;
+    }
+
+    private int TakeReleaseMs()
+    {
+        var ms = _nextReleaseMs ?? ModifierMs();
+        _nextReleaseMs = null;
+        return ms;
+    }
+
     /// <summary>One draw of how long the button is held, in milliseconds. The Click Hold settings; fixed by the tests.</summary>
     internal Func<int> HoldMs { get; set; } = () => HumanTiming.Ms((HumanTiming.Least, HumanTiming.Usual, HumanTiming.Most));
 
@@ -127,7 +151,8 @@ internal sealed class Stroke
 
         if (!Modifier.Any(modifiers))
         {
-            _keys.Press(right, HoldMs());
+            _keys.Press(right, TakeHoldMs());
+            _nextReleaseMs = null;
             return true;
         }
 
@@ -232,11 +257,11 @@ internal sealed class Stroke
 
     private bool Strike()
     {
-        _keys.Press(_right, HoldMs());
+        _keys.Press(_right, TakeHoldMs());
 
         _phase = Phase.Letting;
         _at = Reading;
-        _releaseMs = ModifierMs();
+        _releaseMs = TakeReleaseMs();
         _buttonUpAt = null;
 
         return true;

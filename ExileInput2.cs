@@ -110,6 +110,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.MoveToPointKeys",
             (string who, Vector2 client, Keys[] modifiers) => MoveTo(who, client, modifiers));
         b.SaveMethod("ExileInput2.Arrived", (string who) => Arrived(who));
+
+        // A queue of clicks asked for ahead of time, drawn on screen when show is set. Empty points drop it. See PlanClicks.
+        b.SaveMethod("ExileInput2.PlanClicks",
+            (string who, Vector2[] points, bool[] rights, Keys[] modifiers, bool show) => PlanClicks(who, points, rights, modifiers, show));
         b.SaveMethod("ExileInput2.Drift", (string who) => Drift(who));
         b.SaveMethod("ExileInput2.Aiming", (string who) => Aiming(who));
         b.SaveMethod("ExileInput2.Expected", (string who) => Expected(who));
@@ -305,6 +309,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         var pointer = PointerFor(who);
         var carried = CarryModifiers(who, modifiers);
+
+        // A planned queue moves to points; a move to a rectangle is not one of its clicks, so the queue is dropped.
+        _plans.Remove(who);
 
         pointer.Aim(rect, modifiers ?? Modifier.None);
 
@@ -521,11 +528,27 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             return false;
 
         var carried = CarryModifiers(who, modifiers);
+        var pointer = PointerFor(who);
 
-        PointerFor(who).Place(client, modifiers ?? Modifier.None);
+        // The queue's next point: the journey and lead drawn when it was planned, so the move made is the one drawn.
+        // Anywhere else - a re-aim, a retry - drops the queue, and the caller plans again if it wants it drawn.
+        if (_plans.TryGetValue(who, out var plan) && plan.Next < plan.Items.Count && plan.Items[plan.Next].To == client)
+        {
+            var planned = plan.Items[plan.Next];
+
+            pointer.PlaceAlong(client, modifiers ?? Modifier.None, planned.Drift,
+                planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming));
+            plan.Current = planned;
+            plan.Next++;
+        }
+        else
+        {
+            _plans.Remove(who);
+            pointer.Place(client, modifiers ?? Modifier.None);
+        }
 
         if (carried)
-            PointerFor(who).ModifiersAlreadyDown();
+            pointer.ModifiersAlreadyDown();
 
         return true;
     }
@@ -731,6 +754,13 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // long way, which confirms or refuses rather than assuming.
         var stroke = StrokeFor(who);
 
+        // A planned click's button hold and modifier release, as drawn. See ClickPlan.
+        if (_plans.TryGetValue(who, out var plan) && plan.Current is { } planned)
+        {
+            stroke.UseNext(planned.HoldMs, planned.ReleaseMs);
+            plan.Current = null;
+        }
+
         if (Gesture.StraightIn(modifiers, pointer.ModifiersReady, Buttons.IsDown))
             return Pressed(pointer, stroke.StraightIn(right, modifiers));
 
@@ -877,6 +907,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             MouseBlock.Stop();
 
         ForgetKeyStop(who);
+        _plans.Remove(who);
         _lease.Release(who);
         return true;
     }
@@ -951,6 +982,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             KeysFor(_held).ReleaseAll();
             Buttons.Release();
             _drags.Remove(_held);
+            _plans.Remove(_held);
             MouseBlock.Stop();
             ForgetKeyStop(_held);
             _held = null;
@@ -974,6 +1006,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         KeysFor(who).ReleaseAll();
         Buttons.Release();
         _drags.Remove(who);
+        _plans.Remove(who);
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();
         ForgetKeyStop(who);
@@ -996,6 +1029,39 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             // Nothing can be done about it from here, and throwing on the way out of a process
             // helps nobody.
         }
+    }
+
+    /// <summary>
+    /// A queue of clicks at these points, in order, each a right click where rights says so and all with these modifiers,
+    /// planned now and drawn on screen while show is set. The caller still asks for each move and click; a move to the
+    /// next point uses its planned journey, and anything else drops the queue. Empty points drop it now. Needs the
+    /// cursor taken. See ClickPlan.
+    /// </summary>
+    private bool PlanClicks(string who, Vector2[] points, bool[] rights, Keys[] modifiers, bool show)
+    {
+        if (!_lease.Held(who))
+            return false;
+
+        if (points == null || points.Length == 0)
+        {
+            _plans.Remove(who);
+            return true;
+        }
+
+        _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), points, rights ?? [], modifiers ?? Modifier.None, show,
+            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming));
+
+        return true;
+    }
+
+    /// <summary>Each caller's planned clicks, while it holds the cursor. See PlanClicks.</summary>
+    private readonly Dictionary<string, ClickPlan> _plans = new();
+
+    /// <summary>The queue of the caller holding the cursor, where it asked for it to be shown. See ClickPlan.Draw.</summary>
+    public override void Render()
+    {
+        if (_lease.Holder is { } holder && _plans.TryGetValue(holder, out var plan) && plan.Show)
+            plan.Draw(Graphics);
     }
 
     public override void OnUnload()
