@@ -809,6 +809,9 @@ internal sealed class MousePointer
         if (_travel == null)
             return;
 
+        // By the time stepped through, so a stall carries on rather than jumping. See Travel.MostStep.
+        _travel.Advance();
+
         if (!_modifiersDown && _travel.RemainingMs <= _modifierLeadMs)
             PressModifiers();
 

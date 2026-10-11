@@ -400,6 +400,33 @@ internal static class TravelCases
         Console.WriteLine("              setting off from it snapped the cursor back, a jump the player saw as a teleport");
         Console.WriteLine();
 
+        // A stall mid-journey - the process stopped for garbage collection - moves the journey on by Travel.MostStep at
+        // most, not by the whole stall.
+        var stallClock = TimeSpan.Zero;
+        var stalled = new Travel(new Vector2(0f, 0f), new Vector2(300f, 0f), 60f, 6f, 0f, 3f, () => stallClock);
+
+        for (var k = 0; k < 4; k++)
+        {
+            stallClock += TimeSpan.FromMilliseconds(8);
+            stalled.Advance();
+        }
+
+        var beforeStall = stalled.Progress;
+        stallClock += TimeSpan.FromMilliseconds(100);
+        stalled.Advance();
+        var afterStall = stalled.Progress;
+        var stallMs = (afterStall - beforeStall) * stalled.Ms;
+        var stallOk = stallMs > 0f && stallMs <= (float)Travel.MostStep.TotalMilliseconds + 0.5f;
+
+        if (!stallOk)
+            failed++;
+
+        Console.WriteLine($"{(stallOk ? "  ok  " : "FAIL  ")}13 A 100ms stall moves a journey on by {Travel.MostStep.TotalMilliseconds:0}ms at most, not 100");
+        Console.WriteLine($"        want  the step over the stall worth {Travel.MostStep.TotalMilliseconds:0}ms of the journey or less");
+        Console.WriteLine($"        got   {stallMs:0.#}ms of a {stalled.Ms:0}ms journey");
+        Console.WriteLine("        why   by the clock alone a stall put the cursor most of a journey further on in one step: a teleport");
+        Console.WriteLine();
+
         // The bow, journey to journey. A hand reaching between the same two places repeatedly takes
         // much the same path each time, and that path shifts over minutes - it does not curve left,
         // then hard right, then left again. Measured as how far the bow moves between consecutive

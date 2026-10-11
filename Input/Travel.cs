@@ -50,8 +50,42 @@ internal sealed class Travel
     /// <summary>How long after it was made the journey sets off. See MousePointer.MoveDelayMs.</summary>
     private readonly float _delayMs;
 
-    /// <summary>Time since the journey set off: negative while it waits to.</summary>
-    private TimeSpan Elapsed => (_now != null ? _now() - _madeAt : _since.Elapsed) - TimeSpan.FromMilliseconds(_delayMs);
+    /// <summary>Time since the journey was made, by the clock.</summary>
+    private TimeSpan Real => _now != null ? _now() - _madeAt : _since.Elapsed;
+
+    /// <summary>
+    /// Time since the journey set off, negative while it waits to: by the clock, or once the pointer steps it, the time
+    /// it has stepped through, no more than MostStep a step. See Advance.
+    /// </summary>
+    private TimeSpan Elapsed => (_stepped ? _steppedThrough : Real) - TimeSpan.FromMilliseconds(_delayMs);
+
+    private bool _stepped;
+    private TimeSpan _steppedThrough;
+    private TimeSpan _lastReal;
+
+    /// <summary>
+    /// The most of the journey one step moves through. **A stall is not a jump**: the whole process stopped for 82.8ms of
+    /// garbage collection in one window (dump 2026-10-11 22:06:31), and by the clock alone the next step put the cursor
+    /// most of a 130ms journey further on at once - a teleport, as the player saw it. Stepped through at this at most,
+    /// the journey picks up where it was and takes that much longer. Chosen: a step is 6 to 16ms at the HUD's rates.
+    /// </summary>
+    internal static readonly TimeSpan MostStep = TimeSpan.FromMilliseconds(25);
+
+    /// <summary>Moves the journey on by the time since the last step, MostStep at most. Called by the pointer each step.</summary>
+    public void Advance()
+    {
+        var real = Real;
+        var step = real - _lastReal;
+
+        _lastReal = real;
+        _stepped = true;
+
+        if (step > MostStep)
+            step = MostStep;
+
+        if (step > TimeSpan.Zero)
+            _steppedThrough += step;
+    }
 
     /// <param name="drift">
     /// Where on the noise this journey sits. Advanced a little per journey by whoever owns the
