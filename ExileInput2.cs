@@ -325,7 +325,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
             pointer.AimAlong(rect, planned.To, modifiers ?? Modifier.None, planned.Drift,
                 planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx,
-                planned.Control1, planned.Control2);
+                planned.Control1, planned.Control2, planned.Shape);
             plan.Current = planned;
             plan.Next++;
 
@@ -563,7 +563,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
             pointer.PlaceAlong(client, modifiers ?? Modifier.None, planned.Drift,
                 planned.LeadMs > 0 ? planned.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), planned.MinMs, planned.MsPerRootPx,
-                planned.Control1, planned.Control2);
+                planned.Control1, planned.Control2, planned.Shape);
             plan.Current = planned;
             plan.Next++;
         }
@@ -1134,7 +1134,11 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         }
 
         if (_lease.Holder is { } holder && _plans.TryGetValue(holder, out var current) && current.Show)
-            current.Draw(Graphics, colours, marks);
+        {
+            var pointer = PointerFor(holder);
+
+            current.Draw(Graphics, colours, marks, trail: new ClickPlan.CursorTrail(pointer.Trail(), pointer.JourneyProgress));
+        }
     }
 
     public override void OnUnload()

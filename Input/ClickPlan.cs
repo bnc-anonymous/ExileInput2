@@ -28,7 +28,23 @@ internal sealed class ClickPlan
     /// </summary>
     internal sealed record Planned(RectangleF Rect, bool PointGiven, Vector2 From, Vector2 To, float Drift, float MinMs,
         float MsPerRootPx, Vector2 Control1, Vector2 Control2, Travel Path, int LeadMs, bool Carried, int HoldMs, int ReleaseMs,
-        bool Right, Keys[] Modifiers);
+        bool Right, Keys[] Modifiers, Travel.Flourish Shape);
+
+    /// <summary>
+    /// The share of planned journeys that swoop: their curve pushed well out to one side, an arc most of their own length
+    /// wide, and their time stretched for the longer way. Only on journeys of SwoopShortestPx or more. Chosen, 5%.
+    /// </summary>
+    private const double SwoopChance = 0.05;
+
+    private const float SwoopShortestPx = 40f;
+
+    /// <summary>
+    /// The share of planned journeys that overshoot: run 3 to 7% of their length past the target (4 to 24px) and settle
+    /// back onto it over 60 to 120ms more. Only on journeys of OvershootShortestPx or more. Chosen, 5%.
+    /// </summary>
+    private const double OvershootChance = 0.05;
+
+    private const float OvershootShortestPx = 150f;
 
     /// <summary>
     /// How far a planned journey creeps while the click before it still holds its button. With ctrl held the game took a
@@ -106,21 +122,77 @@ internal sealed class ClickPlan
             var control2 = to - Capped((after - from) / 6f, line.Length() / 3f) + across;
             var minMs = minMsOf(i);
             var perRootPx = pointer.TravelMsPerRootPx;
+            var length = line.Length();
+            var shape = Travel.Flourish.None;
+
+            // **A swoop, now and then**: both controls pushed out to the side the way was already turning, and the time
+            // stretched as the duration's rule would have it for the longer way, so the cursor does not whip round it.
+            if (perRootPx > 0 && length >= SwoopShortestPx && pointer.Chance() < SwoopChance)
+            {
+                var incoming = from - before2;
+                var turning = incoming.X * line.Y - incoming.Y * line.X;
+                var side = turning != 0f ? MathF.Sign(turning) : pointer.Chance() < 0.5 ? -1f : 1f;
+                var outward = new Vector2(-line.Y, line.X) / length * side * length * (0.6f + 0.6f * (float)pointer.Chance());
+
+                control1 += outward;
+                control2 += outward;
+
+                var curved = CubicLength(from, control1, control2, to);
+
+                shape = shape with
+                {
+                    DurationScale = (minMs + MathF.Sqrt(curved) * perRootPx) / Math.Max(1f, minMs + MathF.Sqrt(length) * perRootPx),
+                };
+            }
+
+            // **An overshoot, now and then**: past the target along the way the curve arrives, and back onto it.
+            if (perRootPx > 0 && length >= OvershootShortestPx && pointer.Chance() < OvershootChance)
+            {
+                var arriving = to - control2;
+                var heading = arriving.Length() > 1f ? Vector2.Normalize(arriving) : line / length;
+                var by = Math.Clamp(length * (0.03f + 0.04f * (float)pointer.Chance()), 4f, 24f);
+
+                shape = shape with { Overshoot = heading * by, SettleMs = 60f + 60f * (float)pointer.Chance() };
+            }
+
             var path = perRootPx <= 0
                 ? new Travel(from, to, 1f, 0f, 0f, drift)
                 : new Travel(from, to, minMs, perRootPx, pointer.ArcPercent, drift);
 
             if (perRootPx > 0)
+            {
                 path.Glide(control1, control2, CreepPx);
+                path.Shape(shape);
+            }
             var carried = i > 0 && Modifier.Any(mods) && SameKeys(mods, before);
 
             plan.Items.Add(new Planned(rect, given, from, to, drift, minMs, perRootPx, control1, control2, path,
-                carried || !Modifier.Any(mods) ? 0 : modifierMs(), carried, holdMs(), modifierMs(), i < rights.Count && rights[i], mods));
+                carried || !Modifier.Any(mods) ? 0 : modifierMs(), carried, holdMs(), modifierMs(), i < rights.Count && rights[i], mods,
+                shape));
             from = to;
             before = mods;
         }
 
         return plan;
+    }
+
+    /// <summary>A cubic curve's length, near enough: the sum of 24 straight pieces along it.</summary>
+    private static float CubicLength(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+    {
+        var length = 0f;
+        var last = a;
+
+        for (var k = 1; k <= 24; k++)
+        {
+            var s = k / 24f;
+            var r = 1f - s;
+            var at = r * r * r * a + 3f * r * r * s * b + 3f * r * s * s * c + s * s * s * d;
+
+            length += Vector2.Distance(last, at);
+            last = at;
+        }
+
+        return length;
     }
 
     /// <summary>This vector, shortened to at most this length.</summary>
@@ -163,7 +235,12 @@ internal sealed class ClickPlan
     /// to 0 over a second once it is given up. Clicks already made fade out over DoneFadeFor from when they were made. See
     /// the class and ExileInput2.Render.
     /// </summary>
-    public void Draw(Graphics graphics, Colours colours, Marks marks, float opacity = 1f, bool doneOnly = false)
+    /// <param name="trail">
+    /// The cursor's recent places and how far through the current journey it is, for the plan being followed: the
+    /// current journey is then drawn as a trail fading behind the cursor and the way still ahead of it, rather than whole.
+    /// </param>
+    public void Draw(Graphics graphics, Colours colours, Marks marks, float opacity = 1f, bool doneOnly = false,
+        CursorTrail? trail = null)
     {
         var first = Current != null ? Next - 1 : Next;
         var now = DateTime.UtcNow;
@@ -183,11 +260,37 @@ internal sealed class ClickPlan
             return;
 
         for (var i = Math.Max(0, first); i < Items.Count; i++)
-            DrawItem(graphics, i, i == first ? colours.Current : colours.Later, marks, i == first, opacity);
+            DrawItem(graphics, i, i == first ? colours.Current : colours.Later, marks, i == first, opacity,
+                i == first && Current != null ? trail : null, colours.Later);
+
+        if (trail is { } behind)
+            DrawTrail(graphics, behind, colours.Current, opacity);
+    }
+
+    /// <summary>The cursor's recent places, and how far through its journey it is. See Draw.</summary>
+    internal readonly record struct CursorTrail(IReadOnlyList<(Vector2 Where, float Age)> Points, float Progress);
+
+    /// <summary>The cursor's recent places as a line fading out behind it, newest the strongest. See Draw.</summary>
+    private static void DrawTrail(Graphics graphics, CursorTrail trail, Color colour, float opacity)
+    {
+        var points = trail.Points;
+
+        for (var k = 1; k < points.Count; k++)
+        {
+            var strength = Math.Clamp(1f - points[k].Age, 0f, 1f);
+
+            if (strength <= 0f || Vector2.Distance(points[k - 1].Where, points[k].Where) < 0.5f)
+                continue;
+
+            var faded = Color.FromArgb((int)(colour.A * strength * Math.Clamp(opacity, 0f, 1f)), colour.R, colour.G, colour.B);
+
+            graphics.DrawLine(points[k - 1].Where, points[k].Where, 1f + 2f * strength, faded);
+        }
     }
 
     /// <summary>One click's path and marks in its state's colour, at this opacity. See Draw.</summary>
-    private void DrawItem(Graphics graphics, int i, Color state, Marks marks, bool current, float opacity)
+    private void DrawItem(Graphics graphics, int i, Color state, Marks marks, bool current, float opacity,
+        CursorTrail? trail = null, Color ahead = default)
     {
         Color Faded(float strength) =>
             Color.FromArgb((int)(state.A * strength * Math.Clamp(opacity, 0f, 1f)), state.R, state.G, state.B);
@@ -198,10 +301,25 @@ internal sealed class ClickPlan
         var line = Faded(1f);
         var points = new Vector2[PathSamples];
 
-        for (var k = 0; k < PathSamples; k++)
-            points[k] = item.Path.At(k / (PathSamples - 1f));
+        // With the cursor on its way, only the way still ahead of it, in the colour of what is to come; behind it the
+        // trail is drawn. See DrawTrail.
+        if (trail is { } along)
+        {
+            var start = Math.Clamp(along.Progress, 0f, 1f);
 
-        graphics.DrawPolyLine(points, line, current ? 2f : 1.2f);
+            for (var k = 0; k < PathSamples; k++)
+                points[k] = item.Path.At(start + (1f - start) * k / (PathSamples - 1f));
+
+            if (start < 1f)
+                graphics.DrawPolyLine(points, Color.FromArgb((int)(ahead.A * Math.Clamp(opacity, 0f, 1f)), ahead.R, ahead.G, ahead.B), 1.2f);
+        }
+        else
+        {
+            for (var k = 0; k < PathSamples; k++)
+                points[k] = item.Path.At(k / (PathSamples - 1f));
+
+            graphics.DrawPolyLine(points, line, current ? 2f : 1.2f);
+        }
 
         var modifier = marks.Modifiers ? ModifierLetters(item.Modifiers) : "";
 

@@ -316,6 +316,7 @@ internal static class TravelCases
         var endsOk = items.All(p => Vector2.Distance(p.Path.At(1f), p.To) < 0.01f);
         var again = new Travel(items[1].From, items[1].To, 67f, 6f, 7f, items[1].Drift);
         again.Glide(items[1].Control1, items[1].Control2, ClickPlan.CreepPx);
+        again.Shape(items[1].Shape);
         var sameOk = Enumerable.Range(0, 11).All(k => Vector2.Distance(again.At(k / 10f), items[1].Path.At(k / 10f)) < 0.01f);
         var timedOk = items[0].MinMs == 40f && items[1].MinMs == 67f && items[2].MinMs == 67f;
         var planOk = leadsOk && chainOk && endsOk && sameOk && timedOk && items[1].Right && !items[0].Right;
@@ -496,6 +497,89 @@ internal static class TravelCases
         Console.WriteLine($"        got   {widest:0.#}px");
         Console.WriteLine("        why   the curve through a queue took each control's reach from the journeys either side, so");
         Console.WriteLine("              a 63px hop after an 870px one swung out in an arc several times its own length");
+        Console.WriteLine();
+
+        // An overshoot runs past the target and back, and the journey is not arrived until it is back on it: whatever
+        // waits on arrival, Arrived Within included, sees the cursor on its target. See Travel.Shape.
+        var overNow = TimeSpan.Zero;
+        var overSends = new List<Vector2>();
+        var overStart = new Vector2(100f, 400f);
+        var overTo = new Vector2(500f, 400f);
+        var overshooting = new MousePointer(null, new Random(11))
+        {
+            Cursor = () => overSends.Count > 0 ? overSends[^1] : overStart, Send = q => overSends.Add(q), Clock = () => overNow,
+        };
+        var overshoot = new Travel.Flourish(new Vector2(16f, 0f), 90f, 1f);
+
+        overshooting.PlaceAlong(overTo, Modifier.None, 3f, 60, 60f, 6f, new Vector2(230f, 400f), new Vector2(370f, 400f), overshoot);
+
+        var arrivedEarly = false;
+        var furthest = 0f;
+        var arrivedAt = -1;
+
+        for (var k = 0; k < 120 && arrivedAt < 0; k++)
+        {
+            overNow += TimeSpan.FromMilliseconds(8);
+            overshooting.Step();
+
+            if (overSends.Count > 0)
+                furthest = Math.Max(furthest, overSends[^1].X - overTo.X);
+
+            if (overshooting.Arrived())
+            {
+                arrivedAt = k;
+                arrivedEarly = Vector2.Distance(overSends[^1], overTo) > 0.5f;
+            }
+        }
+
+        var overOk = arrivedAt >= 0 && !arrivedEarly && furthest > 12f && furthest <= 16.5f &&
+                     overshooting.Stopped == StopReason.None;
+
+        if (!overOk)
+            failed++;
+
+        Console.WriteLine($"{(overOk ? "  ok  " : "FAIL  ")}15 An overshoot runs past and back, and arrives only once back on the target");
+        Console.WriteLine("        want  up to 16px past the target; arrived only with the cursor on it; not taken for the player");
+        Console.WriteLine($"        got   {furthest:0.#}px past, arrived after {arrivedAt + 1} steps, " +
+                          $"{(arrivedEarly ? "off the target" : "on the target")}, stopped {overshooting.Stopped}");
+        Console.WriteLine("        why   a click made at the far end of an overshoot would land off its point, and an arrival");
+        Console.WriteLine("              counted there would let one through");
+        Console.WriteLine();
+
+        // A swoop's journey is given the time its longer way would have by the duration's rule. See ClickPlan.Make.
+        var swoopPlain = new Travel(new Vector2(0f, 0f), new Vector2(300f, 0f), 60f, 6f, 0f, 5f);
+        var swooping = new Travel(new Vector2(0f, 0f), new Vector2(300f, 0f), 60f, 6f, 0f, 5f);
+
+        swooping.Shape(new Travel.Flourish(Vector2.Zero, 0f, 1.3f));
+
+        var swoopOk = MathF.Abs(swooping.Ms - swoopPlain.Ms * 1.3f) < 0.01f;
+
+        if (!swoopOk)
+            failed++;
+
+        Console.WriteLine($"{(swoopOk ? "  ok  " : "FAIL  ")}16 A swoop's journey takes longer by its stretch");
+        Console.WriteLine($"        want  {swoopPlain.Ms * 1.3f:0}ms, 1.3 times {swoopPlain.Ms:0}ms");
+        Console.WriteLine($"        got   {swooping.Ms:0}ms");
+        Console.WriteLine("        why   the same time for a much longer way whips the cursor round it");
+        Console.WriteLine();
+
+        // About one planned journey in twenty swoops, and about one in twenty overshoots. See ClickPlan.Make.
+        var rolling = new MousePointer(null, new Random(5)) { MinTravelMs = 60f, TravelMsPerRootPx = 6f, ArcPercent = 7f };
+        var zigzag = Enumerable.Range(0, 2000).Select(k => new Vector2(k % 2 == 0 ? 200f : 500f, 300f + (k % 7) * 20f)).ToArray();
+        var rolled = ClickPlan.Make(rolling, new Vector2(500f, 300f), [], zigzag, new bool[zigzag.Length],
+            new System.Windows.Forms.Keys[zigzag.Length][], false, () => 64, () => 72, _ => 67f).Items;
+        var swoops = rolled.Count(x => x.Shape.DurationScale > 1f) / (float)rolled.Count;
+        var overshoots = rolled.Count(x => x.Shape.Overshoot != Vector2.Zero) / (float)rolled.Count;
+        var rateOk = swoops is > 0.035f and < 0.065f && overshoots is > 0.035f and < 0.065f;
+
+        if (!rateOk)
+            failed++;
+
+        Console.WriteLine($"{(rateOk ? "  ok  " : "FAIL  ")}17 About one planned journey in twenty swoops, and one in twenty overshoots");
+        Console.WriteLine("        given 2000 journeys of about 300px");
+        Console.WriteLine("        want  each between 3.5 and 6.5%");
+        Console.WriteLine($"        got   {swoops:P1} swooped, {overshoots:P1} overshot");
+        Console.WriteLine("        why   each is a flourish now and then, not a habit");
         Console.WriteLine();
 
         Console.WriteLine($"{All.Length + 2 - failed}/{All.Length + 2} match");

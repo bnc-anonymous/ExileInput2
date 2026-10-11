@@ -696,18 +696,21 @@ internal sealed class MousePointer
     /// journey made is the one drawn. See ClickPlan.
     /// </summary>
     /// <summary>Aim, at a point planned ahead with its journey's drift, lead and timing given. See ClickPlan.</summary>
+    /// <summary>A draw from this pointer's random source, from nought to one. See ClickPlan.Make.</summary>
+    internal double Chance() => _rng.NextDouble();
+
     public void AimAlong(RectangleF rect, Vector2 target, Keys[] modifiers, float drift, int modifierLeadMs, float minMs,
-        float msPerRootPx, Vector2? control1 = null, Vector2? control2 = null)
+        float msPerRootPx, Vector2? control1 = null, Vector2? control2 = null, Travel.Flourish? shape = null)
     {
         _stayedAt = null;
-        PlaceAlong(target, modifiers, drift, modifierLeadMs, minMs, msPerRootPx, control1, control2);
+        PlaceAlong(target, modifiers, drift, modifierLeadMs, minMs, msPerRootPx, control1, control2, shape);
 
         // After Place, which resets it: the bound belongs to this target, not the last one.
         _bound = BoundFor(rect, target);
     }
 
     public void PlaceAlong(Vector2 client, Keys[] modifiers, float drift, int modifierLeadMs, float? minMs = null,
-        float? msPerRootPx = null, Vector2? control1 = null, Vector2? control2 = null)
+        float? msPerRootPx = null, Vector2? control1 = null, Vector2? control2 = null, Travel.Flourish? shape = null)
     {
         var shortest = minMs ?? MinTravelMs;
         var perRootPx = msPerRootPx ?? TravelMsPerRootPx;
@@ -770,6 +773,9 @@ internal sealed class MousePointer
         // A planned journey glides along the queue's curve. See Travel.Glide.
         if (control1 is { } c1 && control2 is { } c2)
             _travel.Glide(c1, c2, ClickPlan.CreepPx);
+
+        if (shape is { } flourish)
+            _travel.Shape(flourish);
 
         LastMoveTravelMs = _travel.Ms;
     }
@@ -862,6 +868,11 @@ internal sealed class MousePointer
         _lastPut = client;
         _lastPutAt = Now();
 
+        _trail.Add((_lastPutAt, client));
+
+        while (_trail.Count > 0 && _lastPutAt - _trail[0].At > TrailFor)
+            _trail.RemoveAt(0);
+
         if (Send != null)
         {
             Send(client);
@@ -912,6 +923,27 @@ internal sealed class MousePointer
 
     /// <summary>Whether the journey in hand was planned ahead. See Arrived.</summary>
     private bool _planned;
+
+    /// <summary>Where this pointer put the cursor over the last TrailFor, oldest first. See Trail.</summary>
+    private readonly List<(TimeSpan At, Vector2 Where)> _trail = [];
+
+    /// <summary>How long a put stays in the trail drawn behind the cursor. Chosen.</summary>
+    internal static readonly TimeSpan TrailFor = TimeSpan.FromMilliseconds(220);
+
+    /// <summary>
+    /// Where this pointer put the cursor over the last TrailFor, oldest first, each with its age as a share of TrailFor:
+    /// for the planned-click drawing's trail. See ClickPlan.Draw.
+    /// </summary>
+    internal List<(Vector2 Where, float Age)> Trail()
+    {
+        var now = Now();
+
+        return _trail.Where(x => now - x.At <= TrailFor)
+            .Select(x => (x.Where, (float)((now - x.At).TotalMilliseconds / TrailFor.TotalMilliseconds))).ToList();
+    }
+
+    /// <summary>How far through its journey the cursor is, from nought to one; one with no journey going.</summary>
+    internal float JourneyProgress => _travel?.Progress ?? 1f;
 
     /// <summary>Where this pointer last put the cursor, and when. See PlaceAlong.</summary>
     private Vector2? _lastPut;

@@ -34,7 +34,7 @@ internal sealed class Travel
     private readonly Vector2 _from;
     private readonly Vector2 _to;
     private readonly Vector2 _bow;
-    private readonly float _ms;
+    private float _ms;
 
     /// <summary>
     /// What time it is, for driving a journey by hand.
@@ -144,6 +144,62 @@ internal sealed class Travel
     /// <summary>How long this journey was given, in milliseconds.</summary>
     public float Ms => _ms;
 
+    /// <summary>
+    /// A journey's occasional flourishes, decided when it is planned: a run past its target and back over SettleMs, and
+    /// a stretch of its time by DurationScale for a swoop's longer way. See Shape and ClickPlan.Make.
+    /// </summary>
+    internal readonly record struct Flourish(Vector2 Overshoot, float SettleMs, float DurationScale)
+    {
+        public static readonly Flourish None = new(Vector2.Zero, 0f, 1f);
+    }
+
+    /// <summary>
+    /// Gives the journey its flourishes: its time stretched, and a run past its target by Overshoot, back onto it over
+    /// SettleMs added to the end. The journey still ends exactly on its target, and is not done until it is there, so
+    /// nothing that waits on arrival sees the overshoot.
+    /// </summary>
+    public void Shape(Flourish flourish)
+    {
+        _ms *= Math.Max(1f, flourish.DurationScale);
+
+        if (flourish.Overshoot == Vector2.Zero || flourish.SettleMs <= 0f)
+            return;
+
+        _overshoot = flourish.Overshoot;
+        _settleShare = flourish.SettleMs / (_ms + flourish.SettleMs);
+        _ms += flourish.SettleMs;
+    }
+
+    private Vector2 _overshoot;
+
+    /// <summary>The share of the journey's time spent settling back from an overshoot onto the target. See Shape.</summary>
+    private float _settleShare;
+
+    /// <summary>The share of the way to the target, past the settle: the way is made in the time before it.</summary>
+    private float MainShare(float t) => _settleShare > 0f ? Math.Clamp(t / (1f - _settleShare), 0f, 1f) : t;
+
+    /// <summary>
+    /// How far past the target the cursor is at this share of the time: building over the last part of the way, to the
+    /// whole overshoot as the way ends, and easing back to none over the settle.
+    /// </summary>
+    private Vector2 OvershootAt(float t)
+    {
+        if (_settleShare <= 0f)
+            return Vector2.Zero;
+
+        var turn = 1f - _settleShare;
+
+        if (t < turn)
+            return _overshoot * Smooth(Math.Clamp((t / turn - (1f - OvershootBuilds)) / OvershootBuilds, 0f, 1f));
+
+        return _overshoot * (1f - Smooth(Math.Clamp((t - turn) / _settleShare, 0f, 1f)));
+    }
+
+    /// <summary>The last share of the way over which an overshoot builds. Chosen.</summary>
+    private const float OvershootBuilds = 0.35f;
+
+    private static float Smooth(float u) => u * u * (3f - 2f * u);
+
     /// <summary>How far through the journey, from nought to one.</summary>
     public float Progress => ProgressAt((float)Elapsed.TotalMilliseconds);
 
@@ -167,7 +223,9 @@ internal sealed class Travel
         if (elapsed < 0f)
             return Curve(_delayMs > 0f ? _creep * Math.Clamp(1f + elapsed / _delayMs, 0f, 1f) : 0f);
 
-        return Curve(_creep + (1f - _creep) * Eased(ProgressAt(elapsed)));
+        var progress = ProgressAt(elapsed);
+
+        return Curve(_creep + (1f - _creep) * Eased(MainShare(progress))) + OvershootAt(progress);
     }
 
     /// <summary>
@@ -268,6 +326,6 @@ internal sealed class Travel
     /// thing here that cannot be checked by looking at it - it is a few hundred milliseconds of
     /// cursor somewhere off screen - so the alternative to driving it by hand is not testing it.
     /// </summary>
-    public Vector2 At(float t) => Curve(Eased(t));
+    public Vector2 At(float t) => Curve(Eased(MainShare(t))) + OvershootAt(Math.Clamp(t, 0f, 1f));
 
 }
