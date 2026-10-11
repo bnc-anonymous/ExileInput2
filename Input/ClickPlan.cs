@@ -44,7 +44,11 @@ internal sealed class ClickPlan
     /// </summary>
     private const double OvershootChance = 0.05;
 
-    private const float OvershootShortestPx = 150f;
+    /// <summary>
+    /// The shortest journey that may overshoot: 60px, so a hop between neighbouring 70px inventory cells can. At 150px a
+    /// deposit, all such hops, had two journeys in fifty long enough (2026-10-11). Chosen.
+    /// </summary>
+    private const float OvershootShortestPx = 60f;
 
     /// <summary>
     /// How far a planned journey creeps while the click before it still holds its button. With ctrl held the game took a
