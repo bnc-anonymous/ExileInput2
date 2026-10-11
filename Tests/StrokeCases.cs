@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace ExileInput2.Tests;
@@ -315,7 +316,49 @@ internal static class StrokeCases
             Console.WriteLine();
         }
 
-        Console.WriteLine($"{All.Length - failed}/{All.Length} match");
+        // A batch: the first click's ctrl handed to the move to the second, which clicks on it. Ctrl must come up once,
+        // after the second click's button, and never between the two. See Stroke.HandOver.
+        {
+            var now = TimeSpan.Zero;
+            var keys = new FakeButtons { EverDown = true, State = true, Now = () => now };
+            var stroke = new Stroke(keys) { Now = () => now, HoldMs = () => TimingMs, ModifierMs = () => TimingMs };
+            var ctrl = Modifier.Of(true, false, false);
+
+            void Run(int ticks)
+            {
+                for (var t = 0; t < ticks; t++)
+                {
+                    stroke.Step();
+                    now += TimeSpan.FromMilliseconds(TickMs);
+                }
+            }
+
+            var first = stroke.StraightIn(false, ctrl);
+            Run(2);
+            var heldAfterFirst = stroke.HoldingAfterClick(ctrl);
+            stroke.HandOver();
+            Run(10);
+            var releasedBetween = keys.Log.Contains("release");
+            var second = stroke.StraightIn(false, ctrl);
+            Run(20);
+            var releases = keys.Log.Count(l => l == "release");
+            var ok = first && heldAfterFirst && !releasedBetween && second && releases == 1 && !stroke.Busy;
+
+            if (!ok)
+                failed++;
+
+            Console.WriteLine($"{(ok ? "  ok  " : "FAIL  ")}11 Ctrl handed from one click to the next comes up once, after the last");
+            Console.WriteLine("        want  held after the first click, no release between, one release after the second");
+            Console.WriteLine($"        got   held after the first {heldAfterFirst}, released between {releasedBetween}, " +
+                              $"releases {releases}");
+            Console.WriteLine($"        did   {string.Join(", ", keys.Log)}");
+            Console.WriteLine("        why   a hand holds ctrl through a batch of ctrl+clicks: the player held it through 34 deposit");
+            Console.WriteLine("              clicks in one press. Letting go after each came during the next move, after that move");
+            Console.WriteLine("              had pressed it again, and the next click then waited out a fresh lead on the item");
+            Console.WriteLine();
+        }
+
+        Console.WriteLine($"{All.Length + 1 - failed}/{All.Length + 1} match");
         return failed;
     }
 }

@@ -79,6 +79,9 @@ internal sealed class Stroke
     /// <summary>When the button was seen up after the click; null until it is.</summary>
     private TimeSpan? _buttonUpAt;
 
+    /// <summary>The modifiers this gesture holds, for HoldingAfterClick. Empty for none, or none known.</summary>
+    private Keys[] _held = Modifier.None;
+
     /// <summary>One draw of how long the button is held, in milliseconds. The Click Hold settings; fixed by the tests.</summary>
     internal Func<int> HoldMs { get; set; } = () => HumanTiming.Ms((HumanTiming.Least, HumanTiming.Usual, HumanTiming.Most));
 
@@ -136,6 +139,7 @@ internal sealed class Stroke
         if (_phase == Phase.Idle)
         {
             _keys.Hold(modifiers);
+            _held = [.. modifiers];
 
             _phase = Phase.Settling;
             _right = right;
@@ -184,13 +188,46 @@ internal sealed class Stroke
     /// click and the key coming up in the same breath is the half of the old gesture that was
     /// actually load-bearing, and the fast path never had it.
     /// </summary>
-    public bool StraightIn(bool right)
+    public bool StraightIn(bool right, IReadOnlyList<Keys> modifiers = null)
     {
         if (_phase == Phase.Letting || _keys.PressHeld)
             return false;
 
         _right = right;
+        _held = modifiers == null ? Modifier.None : [.. modifiers];
         return Strike();
+    }
+
+    /// <summary>
+    /// Whether this gesture has clicked and still holds exactly these modifiers, waiting to let them go: a move asking
+    /// for the same ones may take them over. See HandOver.
+    /// </summary>
+    public bool HoldingAfterClick(IReadOnlyList<Keys> modifiers)
+    {
+        if (_phase != Phase.Letting || !Modifier.Any(modifiers) || _held.Length != modifiers.Count)
+            return false;
+
+        for (var i = 0; i < modifiers.Count; i++)
+        {
+            if (System.Array.IndexOf(_held, modifiers[i]) < 0)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Gives the modifiers this gesture holds to the next move, which asked for the same ones: the gesture ends without
+    /// letting them go, and the next click's gesture lets them go after its own button instead. So a batch of ctrl+clicks
+    /// holds ctrl from before the first to after the last, as a hand does - the player held it through 34 deposit clicks
+    /// in one press (2026-10-11) - where letting go after each click came during the next move, after that move had
+    /// pressed it again, and the next click then found it up and waited out a fresh lead on the item.
+    /// </summary>
+    public void HandOver()
+    {
+        _phase = Phase.Idle;
+        _held = Modifier.None;
+        _buttonUpAt = null;
     }
 
     private bool Strike()
@@ -231,6 +268,7 @@ internal sealed class Stroke
     {
         _keys.Release();
         _phase = Phase.Idle;
+        _held = Modifier.None;
 
         OnLetGo?.Invoke();
     }

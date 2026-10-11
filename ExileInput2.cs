@@ -304,7 +304,28 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             return false;
 
         var pointer = PointerFor(who);
+        var carried = CarryModifiers(who, modifiers);
+
         pointer.Aim(rect, modifiers ?? Modifier.None);
+
+        if (carried)
+            pointer.ModifiersAlreadyDown();
+
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a move asking for these modifiers takes them over from the click before it, still holding them: then the
+    /// click does not let them go and the move does not press them again. See Stroke.HandOver.
+    /// </summary>
+    private bool CarryModifiers(string who, Keys[] modifiers)
+    {
+        var stroke = StrokeFor(who);
+
+        if (modifiers == null || !stroke.HoldingAfterClick(modifiers))
+            return false;
+
+        stroke.HandOver();
         return true;
     }
 
@@ -499,7 +520,13 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (!_lease.Held(who))
             return false;
 
+        var carried = CarryModifiers(who, modifiers);
+
         PointerFor(who).Place(client, modifiers ?? Modifier.None);
+
+        if (carried)
+            PointerFor(who).ModifiersAlreadyDown();
+
         return true;
     }
 
@@ -705,7 +732,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         var stroke = StrokeFor(who);
 
         if (Gesture.StraightIn(modifiers, pointer.ModifiersReady, Buttons.IsDown))
-            return Pressed(pointer, stroke.StraightIn(right));
+            return Pressed(pointer, stroke.StraightIn(right, modifiers));
 
         // Whatever the JOURNEY pressed comes up first, or the stroke presses control on top of a
         // control already down and releases it once at the end - leaving the second held.

@@ -342,6 +342,12 @@ internal sealed class MousePointer
     /// <summary>Told that whatever the journey pressed has been released.</summary>
     public void ModifiersLetGo() => _modifiersDown = false;
 
+    /// <summary>
+    /// Told that this journey's modifiers are already down, held over from the click before it, so it presses nothing.
+    /// See Stroke.HandOver.
+    /// </summary>
+    public void ModifiersAlreadyDown() => _modifiersDown = _modifiers.Length > 0;
+
     /// <summary>Where the cursor was last sent, in client space.</summary>
     public Vector2 Expected { get; private set; }
 
