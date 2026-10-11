@@ -99,8 +99,11 @@ internal sealed class ClickPlan
             var after = i < count - 1 ? landings[i + 1] : to;
             var line = to - from;
             var across = line.Length() > 1f ? new Vector2(-line.Y, line.X) * CurveWander * PerlinNoise.Full(drift, 0f) : Vector2.Zero;
-            var control1 = from + (to - before2) / 6f + across;
-            var control2 = to - (after - from) / 6f + across;
+            // Each control's reach capped at a third of this way, its own length in an evenly spaced queue. Uncapped, the
+            // reach follows the ways either side, so a short hop between two long ones - a third load in the inventory
+            // between the bench's result and the button - swung out in an arc several times its own length (2026-10-11).
+            var control1 = from + Capped((to - before2) / 6f, line.Length() / 3f) + across;
+            var control2 = to - Capped((after - from) / 6f, line.Length() / 3f) + across;
             var minMs = minMsOf(i);
             var perRootPx = pointer.TravelMsPerRootPx;
             var path = perRootPx <= 0
@@ -118,6 +121,14 @@ internal sealed class ClickPlan
         }
 
         return plan;
+    }
+
+    /// <summary>This vector, shortened to at most this length.</summary>
+    private static Vector2 Capped(Vector2 vector, float most)
+    {
+        var length = vector.Length();
+
+        return length > most && length > 0f ? vector * (most / length) : vector;
     }
 
     private static bool SameKeys(IReadOnlyList<Keys> a, IReadOnlyList<Keys> b)

@@ -472,6 +472,32 @@ internal static class TravelCases
         Console.WriteLine("              it, which is the same tell the aim had before it drifted");
         Console.WriteLine();
 
+        // A short hop between two long journeys stays near its own line: the curve's controls reach no further than a
+        // third of the hop, whatever the journeys either side. See ClickPlan.Make.
+        var reforging = new MousePointer(null, new Random(20261012)) { MinTravelMs = 60f, TravelMsPerRootPx = 6f, ArcPercent = 7f };
+        var cyclePoints = new[] { new Vector2(887f, 540f), new Vector2(1722f, 813f), new Vector2(1785f, 807f), new Vector2(900f, 300f) };
+        var cycle = ClickPlan.Make(reforging, new Vector2(880f, 520f), [], cyclePoints, [false, false, false, false],
+            [ctrlOnly, ctrlOnly, ctrlOnly, Modifier.None], false, () => 64, () => 72, _ => 67f).Items;
+        var hop = cycle[2];
+        var hopLine = hop.To - hop.From;
+        var hopLength = hopLine.Length();
+        var widest = Enumerable.Range(0, 41).Max(k =>
+        {
+            var at = hop.Path.At(k / 40f) - hop.From;
+            return MathF.Abs(at.X * hopLine.Y - at.Y * hopLine.X) / hopLength;
+        });
+        var hopOk = widest <= hopLength * 0.5f;
+
+        if (!hopOk)
+            failed++;
+
+        Console.WriteLine($"{(hopOk ? "  ok  " : "FAIL  ")}14 A short hop between two long journeys keeps close to its own line");
+        Console.WriteLine($"        want  at most {hopLength * 0.5f:0}px off the line of a {hopLength:0}px hop");
+        Console.WriteLine($"        got   {widest:0.#}px");
+        Console.WriteLine("        why   the curve through a queue took each control's reach from the journeys either side, so");
+        Console.WriteLine("              a 63px hop after an 870px one swung out in an arc several times its own length");
+        Console.WriteLine();
+
         Console.WriteLine($"{All.Length + 2 - failed}/{All.Length + 2} match");
         return failed;
     }
