@@ -582,6 +582,27 @@ internal static class TravelCases
         Console.WriteLine("        why   each is a flourish now and then, not a habit");
         Console.WriteLine();
 
+        // Clicks added to a queue's end carry over its modifier and continue its curve. See ExileInput2.ExtendPlan.
+        var extending = new MousePointer(null, new Random(3)) { MinTravelMs = 60f, TravelMsPerRootPx = 6f, ArcPercent = 7f };
+        var firstPart = ClickPlan.Make(extending, new Vector2(100f, 100f), [], [new Vector2(200f, 100f), new Vector2(300f, 100f)],
+            [false, false], [ctrlOnly, ctrlOnly], false, () => 64, () => 72, _ => 67f).Items;
+        var addedPart = ClickPlan.Make(extending, firstPart[^1].To, [], [new Vector2(400f, 100f)], [false], [ctrlOnly], false,
+            () => 64, () => 72, _ => 67f, firstPart[^1].From, firstPart[^1].Modifiers).Items;
+        var joinIn = firstPart[^1].Path.At(1f) - firstPart[^1].Path.At(0.97f);
+        var joinOut = addedPart[0].Path.At(0.03f) - addedPart[0].Path.At(0f);
+        var joinTurn = MathF.Acos(Math.Clamp(Vector2.Dot(Vector2.Normalize(joinIn), Vector2.Normalize(joinOut)), -1f, 1f)) * 180f / MathF.PI;
+        var extendOk = addedPart[0].Carried && addedPart[0].LeadMs == 0 && addedPart[0].From == firstPart[^1].To && joinTurn < 35f;
+
+        if (!extendOk)
+            failed++;
+
+        Console.WriteLine($"{(extendOk ? "  ok  " : "FAIL  ")}18 A click added to a queue's end carries its modifier and continues its curve");
+        Console.WriteLine("        want  carried, no lead of its own, from the queue's last point, under 35 degrees at the join");
+        Console.WriteLine($"        got   carried {addedPart[0].Carried}, lead {addedPart[0].LeadMs}, from the last point " +
+                          $"{addedPart[0].From == firstPart[^1].To}, {joinTurn:0.#} degrees");
+        Console.WriteLine("        why   a queue added to rather than planned again goes on as one, ctrl held through");
+        Console.WriteLine();
+
         Console.WriteLine($"{All.Length + 2 - failed}/{All.Length + 2} match");
         return failed;
     }

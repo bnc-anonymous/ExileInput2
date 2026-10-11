@@ -80,14 +80,18 @@ internal sealed class ClickPlan
     /// first move unlike the rest - and its modifier lead, button hold and modifier release drawn now. A click whose
     /// modifiers match the one before it carries them over, with no lead of its own.
     /// </summary>
+    /// <param name="previous">For a queue added to the end of another: where that queue's last journey set off from, so
+    /// the first journey here continues its curve. See Extend.</param>
+    /// <param name="modifiersBefore">For a queue added to the end of another: its last click's modifiers, carried over
+    /// by a first click here that holds the same. See Extend.</param>
     public static ClickPlan Make(MousePointer pointer, Vector2 cursor, IReadOnlyList<RectangleF> rects, IReadOnlyList<Vector2> points,
         IReadOnlyList<bool> rights, IReadOnlyList<Keys[]> modifiers, bool show, Func<int> holdMs, Func<int> modifierMs,
-        Func<int, float> minMsOf)
+        Func<int, float> minMsOf, Vector2? previous = null, Keys[] modifiersBefore = null)
     {
         var plan = new ClickPlan { Show = show };
         var from = cursor;
         var count = Math.Max(rects.Count, points.Count);
-        Keys[] before = Modifier.None;
+        Keys[] before = modifiersBefore ?? Modifier.None;
         var landings = new List<Vector2>();
 
         // Where each click lands first, so each journey's curve can head for the one after it.
@@ -115,7 +119,7 @@ internal sealed class ClickPlan
             // **One smooth curve through the queue**, a Catmull-Rom spline as cubic beziers: the way into each click heads
             // for the next and the way out leaves in the same direction, so it slows through a click rather than turning a
             // corner at it. A little off it, on the noise. See Travel.Glide.
-            var before2 = i > 0 ? (i > 1 ? landings[i - 2] : cursor) : from;
+            var before2 = i > 0 ? (i > 1 ? landings[i - 2] : cursor) : previous ?? from;
             var after = i < count - 1 ? landings[i + 1] : to;
             var line = to - from;
             var across = line.Length() > 1f ? new Vector2(-line.Y, line.X) * CurveWander * PerlinNoise.Full(drift, 0f) : Vector2.Zero;
@@ -168,7 +172,7 @@ internal sealed class ClickPlan
                 path.Glide(control1, control2, CreepPx);
                 path.Shape(shape);
             }
-            var carried = i > 0 && Modifier.Any(mods) && SameKeys(mods, before);
+            var carried = (i > 0 || modifiersBefore != null) && Modifier.Any(mods) && SameKeys(mods, before);
 
             plan.Items.Add(new Planned(rect, given, from, to, drift, minMs, perRootPx, control1, control2, path,
                 carried || !Modifier.Any(mods) ? 0 : modifierMs(), carried, holdMs(), modifierMs(), i < rights.Count && rights[i], mods,

@@ -70,6 +70,7 @@ public sealed class ExileInput2Client
     private Func<string, int, bool, Keys, bool> _blockPlayerKeys;
     private Func<string, bool> _keyBlockCancelled;
     private Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool> _planClicks;
+    private Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool> _extendPlan;
     private Func<string, float[]> _lastMoveTimes;
     private Func<string, string> _stopped;
 
@@ -174,6 +175,7 @@ public sealed class ExileInput2Client
             _blockPlayerKeys = b.GetMethod<Func<string, int, bool, Keys, bool>>("ExileInput2.BlockPlayerKeys");
             _keyBlockCancelled = b.GetMethod<Func<string, bool>>("ExileInput2.KeyBlockCancelled");
             _planClicks = b.GetMethod<Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool>>("ExileInput2.PlanClicks");
+            _extendPlan = b.GetMethod<Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool>>("ExileInput2.ExtendPlan");
             _lastMoveTimes = b.GetMethod<Func<string, float[]>>("ExileInput2.LastMoveTimes");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
@@ -483,6 +485,17 @@ public sealed class ExileInput2Client
     {
         Look();
         return _planClicks?.Invoke(_me, rects, points, rights, modifiers, shortestMoveMs, show) ?? false;
+    }
+
+    /// <summary>
+    /// Clicks added to the end of the queue PlanClicks made, planned as it plans them from where the queue's last click
+    /// lands, rather than the queue planned again. False with no queue to add to, without the cursor, or from an
+    /// ExileInput2 too old to have it.
+    /// </summary>
+    public bool ExtendPlan(RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs)
+    {
+        Look();
+        return _extendPlan?.Invoke(_me, rects, points, rights, modifiers, shortestMoveMs) ?? false;
     }
 
     /// <summary>

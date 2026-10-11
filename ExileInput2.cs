@@ -124,6 +124,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.PlanClicks",
             (string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs, bool show) =>
                 PlanClicks(who, rects, points, rights, modifiers, shortestMoveMs, show));
+        // Clicks added to the end of a caller's queue rather than the queue planned again. See ExtendPlan.
+        b.SaveMethod("ExileInput2.ExtendPlan",
+            (string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs) =>
+                ExtendPlan(who, rects, points, rights, modifiers, shortestMoveMs));
         b.SaveMethod("ExileInput2.Drift", (string who) => Drift(who));
         b.SaveMethod("ExileInput2.Aiming", (string who) => Aiming(who));
         b.SaveMethod("ExileInput2.Expected", (string who) => Expected(who));
@@ -1090,11 +1094,40 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             _fading.Add((replaced, DateTime.UtcNow, true));
 
         _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), rects, points, rights ?? [], modifiers ?? [], show,
-            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming),
-            i => shortestMoveMs != null && i < shortestMoveMs.Length && shortestMoveMs[i] >= 0
-                ? shortestMoveMs[i] * ExileInput2Settings.SeedFactor(Settings.Seed, ExileInput2Settings.ShortestMoveIndex)
-                : Settings.UsedMinTravelMs);
+            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming), ShortestOf(shortestMoveMs));
 
+        return true;
+    }
+
+    /// <summary>Each click's shortest move from a caller's list: its own, or ExileInput2's where it gives -1 or none.</summary>
+    private Func<int, float> ShortestOf(int[] shortestMoveMs) =>
+        i => shortestMoveMs != null && i < shortestMoveMs.Length && shortestMoveMs[i] >= 0
+            ? shortestMoveMs[i] * ExileInput2Settings.SeedFactor(Settings.Seed, ExileInput2Settings.ShortestMoveIndex)
+            : Settings.UsedMinTravelMs;
+
+    /// <summary>
+    /// Adds clicks to the end of a caller's queue, as PlanClicks would plan them, from where its last click lands: the
+    /// queue goes on rather than being planned again, and what is drawn of it stays as it was. The first added click
+    /// continues the last one's curve and carries over its modifiers where it holds the same. False with no queue to add
+    /// to, or without the cursor.
+    /// </summary>
+    private bool ExtendPlan(string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs)
+    {
+        if (!_lease.Held(who) || !_plans.TryGetValue(who, out var plan) || plan.Items.Count == 0)
+            return false;
+
+        rects ??= [];
+        points ??= [];
+
+        if (rects.Length == 0 && points.Length == 0)
+            return true;
+
+        var last = plan.Items[^1];
+        var added = ClickPlan.Make(PointerFor(who), last.To, rects, points, rights ?? [], modifiers ?? [], plan.Show,
+            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming), ShortestOf(shortestMoveMs),
+            last.From, last.Modifiers);
+
+        plan.Items.AddRange(added.Items);
         return true;
     }
 
