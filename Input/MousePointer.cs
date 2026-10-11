@@ -819,7 +819,12 @@ internal sealed class MousePointer
         // By the time stepped through, so a stall carries on rather than jumping: the most a step may move through is Most
         // Move Time Per Frame, the same every step - drawn afresh, 80 to 100% of a 25ms cap, ordinary frames over it moved
         // at a different pace each and the cursor stuttered (2026-10-11). 0 is no cap. See Travel.Advance.
-        _travel.Advance(MostMoveTimePerFrameMs > 0 ? TimeSpan.FromMilliseconds(MostMoveTimePerFrameMs) : TimeSpan.MaxValue);
+        //
+        // **Planned journeys only.** In a map the HUD stalled for 250 to 500ms every few seconds, with no garbage
+        // collection in any of them (dump 2026-10-12 00:25:22), and capped, an autoloot move advanced 50ms a stall: it
+        // froze and crept and took several times its length. A move racing to an item is better caught up in one jump.
+        // The cap was for the hideout's planned runs, where a stall's jump read as a teleport across the inventory.
+        _travel.Advance(_planned && MostMoveTimePerFrameMs > 0 ? TimeSpan.FromMilliseconds(MostMoveTimePerFrameMs) : TimeSpan.MaxValue);
 
         if (!_modifiersDown && _travel.RemainingMs <= _modifierLeadMs)
             PressModifiers();

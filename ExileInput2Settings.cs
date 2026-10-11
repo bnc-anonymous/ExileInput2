@@ -87,7 +87,9 @@ public class ExileInput2Settings : ISettings
         "How much of a move one frame may cover. A move is timed by the clock, so a frame\n" +
         "held up - the game or the HUD pausing - would otherwise jump the cursor along\n" +
         "the move in one go. Keep it well above a normal frame, or ordinary moves stutter.\n\n" +
-        "Lower makes a pause show as a smaller jump and a longer slow-down. 0 turns it off.")]
+        "Lower makes a pause show as a smaller jump and a longer slow-down. 0 turns it off.\n\n" +
+        "Only for clicks a plugin planned ahead, such as depositing and tablet runs. Other\n" +
+        "moves, such as autoloot and placing explosives, catch up after a pause in one go.")]
     public RangeNode<int> MostMoveTimePerFrameMs { get; set; } = new RangeNode<int>(50, 0, 200);
 
     [Menu("Click Hold Shortest (ms)",
