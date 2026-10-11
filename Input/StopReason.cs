@@ -25,4 +25,7 @@ public enum StopReason
 
     /// <summary>Another caller took the cursor with a higher priority. See ExileInput2.TakeWithPriority.</summary>
     TakenOver,
+
+    /// <summary>The player pressed a key, to a caller that asked to be stopped by keys. See ExileInput2.StopOnPlayerKeys.</summary>
+    PlayerPressedAKey,
 }

@@ -126,6 +126,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // this long, and with block it is dropped as well. See IgnorePlayerMouse.
         b.SaveMethod("ExileInput2.IgnorePlayerMouse", (string who, int ms, bool block) => IgnorePlayerMouse(who, ms, block));
 
+        // For this claim, the player's own key presses - any but these - stop the caller, as moving the mouse does.
+        // See StopOnPlayerKeys.
+        b.SaveMethod("ExileInput2.StopOnPlayerKeys", (string who, Keys[] except) => StopOnPlayerKeys(who, except));
+
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
             (string who, bool ctrl, bool shift, bool right) => Click(who, Modifier.Of(ctrl, shift), right));
@@ -557,6 +561,42 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     private readonly Dictionary<string, int> _moveTimesPerRootPixel = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Until the caller releases the cursor or is stopped, a key the player presses - any but those given - stops it
+    /// with PlayerPressedAKey, as moving the mouse does. Keys this plugin sends do not count. For a run the player should
+    /// be able to cancel by moving with the keyboard. Cleared on release, so each claim asks again. Needs the cursor
+    /// taken. See KeyWatch.
+    /// </summary>
+    private bool StopOnPlayerKeys(string who, Keys[] except)
+    {
+        if (!_lease.Held(who))
+            return false;
+
+        var keys = new HashSet<int>();
+
+        foreach (var key in except ?? [])
+            keys.Add((int)(key & Keys.KeyCode));
+
+        _keyStops[who] = keys;
+        KeyWatch.Start();
+        KeyWatch.Drain();
+
+        return true;
+    }
+
+    /// <summary>Callers stopped by the player's keys, with the keys that do not stop them. See StopOnPlayerKeys.</summary>
+    private readonly Dictionary<string, HashSet<int>> _keyStops = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Drops a caller's key stop, and the watch with the last one.</summary>
+    private void ForgetKeyStop(string who)
+    {
+        if (who != null)
+            _keyStops.Remove(who);
+
+        if (_keyStops.Count == 0)
+            KeyWatch.Stop();
+    }
+
+    /// <summary>
     /// For up to MouseBlock.MostMs, the player's mouse movement does not stop this caller, and with block the player's
     /// movement, presses and wheel are dropped before the game sees them. Ends early when the caller releases or is
     /// stopped. Needs the cursor taken. See MouseBlock.
@@ -723,6 +763,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         Buttons.Release();
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();
+        ForgetKeyStop(who);
         _lease.Release(who);
         return true;
     }
@@ -749,6 +790,19 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             // back: a click sent while the game is not in front lands in whatever is.
             if (Blocked() is var blocked and not StopReason.None)
                 pointer.Stop(blocked);
+
+            // A key of the player's, to a holder that asked to be stopped by keys. See StopOnPlayerKeys.
+            if (_keyStops.TryGetValue(driving, out var except))
+            {
+                foreach (var key in KeyWatch.Drain())
+                {
+                    if (!except.Contains(key))
+                    {
+                        pointer.Stop(StopReason.PlayerPressedAKey, $"the player pressed {(Keys)key}");
+                        break;
+                    }
+                }
+            }
 
             pointer.Step();
 
@@ -781,6 +835,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             Buttons.Release();
             _drags.Remove(_held);
             MouseBlock.Stop();
+            ForgetKeyStop(_held);
             _held = null;
         }
         else if (_lease.Holder != null)
@@ -803,6 +858,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         _drags.Remove(who);
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();
+        ForgetKeyStop(who);
         _lease.Release(who);
         _held = null;
     }
@@ -837,6 +893,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         HeldKeys.ReleaseEverything();
         MouseBlock.Stop();
+        KeyWatch.Stop();
         _lease.Break();
     }
 }

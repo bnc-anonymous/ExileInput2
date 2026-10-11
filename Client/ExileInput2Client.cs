@@ -66,6 +66,7 @@ public sealed class ExileInput2Client
     private Func<string, int, bool> _setShortestMove;
     private Func<string, int, bool> _setMoveTimePerRootPixel;
     private Func<string, int, bool, bool> _ignorePlayerMouse;
+    private Func<string, Keys[], bool> _stopOnPlayerKeys;
     private Func<string, string> _stopped;
 
     private Func<string, string> _stopDetail;
@@ -165,6 +166,7 @@ public sealed class ExileInput2Client
             _takeWithPriority = b.GetMethod<Func<string, int, bool>>("ExileInput2.TakeWithPriority");
             _setMoveTimePerRootPixel = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetMoveTimePerRootPixel");
             _ignorePlayerMouse = b.GetMethod<Func<string, int, bool, bool>>("ExileInput2.IgnorePlayerMouse");
+            _stopOnPlayerKeys = b.GetMethod<Func<string, Keys[], bool>>("ExileInput2.StopOnPlayerKeys");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
         }
@@ -426,6 +428,17 @@ public sealed class ExileInput2Client
     {
         Look();
         return _ignorePlayerMouse?.Invoke(_me, ms, block) ?? false;
+    }
+
+    /// <summary>
+    /// Until this caller releases the cursor or is stopped, a key the player presses - any but those given - stops it
+    /// with "PlayerPressedAKey", as moving the mouse does; keys sent through ExileInput2 do not count. Cleared on
+    /// release, so ask again after each Take. Needs the cursor taken. False from an ExileInput2 too old to have it.
+    /// </summary>
+    public bool StopOnPlayerKeys(Keys[] except)
+    {
+        Look();
+        return _stopOnPlayerKeys?.Invoke(_me, except) ?? false;
     }
 
     /// <summary>Presses and releases a key.</summary>

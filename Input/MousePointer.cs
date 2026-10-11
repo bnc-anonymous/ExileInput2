@@ -232,6 +232,13 @@ internal sealed class MousePointer
     /// Sticky on purpose. A caller polling every tick would otherwise carry straight on the moment
     /// the player's hand came to rest, which is the opposite of what taking the mouse back means.
     /// </summary>
+    /// <summary>Stops with what was seen, for StopDetail. See Stop.</summary>
+    public void Stop(StopReason reason, string detail)
+    {
+        StopDetail = detail;
+        Stop(reason);
+    }
+
     public void Stop(StopReason reason)
     {
         Stopped = reason;
