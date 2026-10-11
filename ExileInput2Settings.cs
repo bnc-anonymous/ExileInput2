@@ -170,11 +170,10 @@ public class ExileInput2Settings : ISettings
     [JsonIgnore]
     [Menu("Seed",
         "This install's own seed. It shapes every move - where the aim wanders, how a path\n" +
-        "bows - and moves each feel setting above 10 to 20 per\n" +
-        "cent up or down from its slider (Shortest Move 5 per cent down to 20 up), and\n" +
-        "each click timing up to 5 per cent; the\n" +
-        "values below are the ones used. Drawn at\n" +
-        "random the first time the plugin starts.\n\n" +
+        "bows - and moves each feel setting above from its slider: 10 to 20 per cent up or\n" +
+        "down, Aim Within 10 per cent down to none, Shortest Move 5 per cent down to 20 up,\n" +
+        "and each click timing up to 5 per cent either way. The values below are the ones\n" +
+        "used. Drawn at random the first time the plugin starts.\n\n" +
         "Nought uses the sliders as they are. Reset to defaults puts the sliders back and\n" +
         "leaves the seed alone.")]
     public CustomNode SeedUi { get; set; }
@@ -194,8 +193,7 @@ public class ExileInput2Settings : ISettings
 
     /// <summary>
     /// How far the seed moves one varied setting: 10 to 20 per cent up or down, the same for the same seed and setting
-    /// every time. Shortest Move instead anywhere from 5 per cent down to 20 per cent up: much below the slider, short
-    /// hops clicked too quickly (2026-10-11). One for nought.
+    /// every time, except where FactorBoundsOf gives a setting its own bounds. One for nought.
     /// </summary>
     internal static float SeedFactor(int seed, int which)
     {
@@ -204,20 +202,30 @@ public class ExileInput2Settings : ISettings
 
         var draw = new System.Random(unchecked(seed * 31 + (which + 1) * 7919));
 
-        if (which == ShortestMoveIndex)
-            return (float)(ShortestMoveLeast + draw.NextDouble() * (ShortestMoveMost - ShortestMoveLeast));
+        if (FactorBoundsOf(which) is var (least, most))
+            return (float)(least + draw.NextDouble() * (most - least));
 
         var size = 0.10 + draw.NextDouble() * 0.10;
 
         return (float)(draw.Next(2) == 0 ? 1d - size : 1d + size);
     }
 
-    /// <summary>Shortest Move's place in Varied, and the bounds of its seed factor. See SeedFactor.</summary>
+    /// <summary>
+    /// A varied setting's own bounds for its seed factor, anywhere between them; null for the 10 to 20 per cent either
+    /// way. Aim Within from 10 per cent down to none: wider than its slider aims too near a target's edge. Shortest Move
+    /// from 5 per cent down to 20 up: much below its slider, short hops clicked too quickly. Both chosen 2026-10-11.
+    /// </summary>
+    internal static (double Least, double Most)? FactorBoundsOf(int which) => which switch
+    {
+        AimWithinIndex => (0.90, 1.00),
+        ShortestMoveIndex => (0.95, 1.20),
+        _ => null,
+    };
+
+    /// <summary>Aim Within's and Shortest Move's places in Varied. See FactorBoundsOf.</summary>
+    internal const int AimWithinIndex = 0;
+
     internal const int ShortestMoveIndex = 1;
-
-    internal const double ShortestMoveLeast = 0.95;
-
-    internal const double ShortestMoveMost = 1.20;
 
     /// <summary>A varied setting as used: its slider moved by the seed, rounded, within the slider's range.</summary>
     private int Used(int which)

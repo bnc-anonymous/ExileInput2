@@ -52,9 +52,10 @@ internal static class SeedCases
 
         var seeds = new[] { 1, 42, 1234567, 7654321, int.MaxValue - 1 };
         var factors = seeds.SelectMany(seed => Enumerable.Range(0, 4)
-            .Where(which => which != ExileInput2Settings.ShortestMoveIndex)
+            .Where(which => ExileInput2Settings.FactorBoundsOf(which) == null)
             .Select(which => ExileInput2Settings.SeedFactor(seed, which))).ToList();
         var shortest = Enumerable.Range(1, 2000).Select(seed => ExileInput2Settings.SeedFactor(seed, ExileInput2Settings.ShortestMoveIndex)).ToList();
+        var aim = Enumerable.Range(1, 2000).Select(seed => ExileInput2Settings.SeedFactor(seed, ExileInput2Settings.AimWithinIndex)).ToList();
 
         Check("5  Seed nought leaves every setting as its slider",
             Enumerable.Range(0, 5).All(which => ExileInput2Settings.SeedFactor(0, which) == 1f),
@@ -65,6 +66,9 @@ internal static class SeedCases
         Check("6b Shortest Move goes from 5 per cent down to 20 per cent up, and both ways",
             shortest.All(f => f is >= 0.95f and <= 1.2f) && shortest.Any(f => f < 1f) && shortest.Any(f => f > 1.15f),
             "much below its slider, short hops clicked too quickly; above it is the safe side");
+        Check("6c Aim Within goes from 10 per cent down to none, never up",
+            aim.All(f => f is >= 0.9f and <= 1f) && aim.Any(f => f < 0.91f) && aim.Any(f => f > 0.99f),
+            "wider than its slider aims too near a target's edge");
         Check("7  The same seed moves a setting the same way every time",
             seeds.All(seed => Enumerable.Range(0, 5).All(which => ExileInput2Settings.SeedFactor(seed, which) == ExileInput2Settings.SeedFactor(seed, which))),
             "an install's habit is the same session to session");
