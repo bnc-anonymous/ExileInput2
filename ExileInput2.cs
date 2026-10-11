@@ -76,6 +76,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // flag about whether it already holds the cursor.
         b.SaveMethod("ExileInput2.Take", (string who) => Claim(who));
         b.SaveMethod("ExileInput2.Release", (string who) => Give(who));
+
+        // Takes the cursor from a holder of lower priority, which is stopped with TakenOver. See TakeWithPriority.
+        b.SaveMethod("ExileInput2.TakeWithPriority", (string who, int priority) => TakeWithPriority(who, priority));
         b.SaveMethod("ExileInput2.Holder", () => _lease.Holder);
 
         // Why a caller lost the cursor, as a string so the bridge carries nothing this plugin
@@ -150,7 +153,27 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// that, a machine polling Take every tick resumes the instant the player's hand comes to rest,
     /// and the player has to fight it rather than simply take the mouse back once.
     /// </summary>
-    private bool Claim(string who)
+    /// <summary>
+    /// Claims the cursor at a priority. A holder that took it at a lower priority is stopped with TakenOver, as if the
+    /// player had moved the mouse, and must release before it can take it again; one at the same or higher priority keeps
+    /// it and this is refused. An ordinary Take is priority 0. For a caller whose one move cannot wait, such as picking
+    /// an item up before somebody else does.
+    /// </summary>
+    private bool TakeWithPriority(string who, int priority)
+    {
+        if (_lease.Holder is { } holder && !string.Equals(holder, who, StringComparison.OrdinalIgnoreCase))
+        {
+            if (priority <= _lease.HolderPriority)
+                return false;
+
+            PointerFor(holder).Stop(StopReason.TakenOver);
+            Abandon(holder, StopReason.TakenOver);
+        }
+
+        return Claim(who, priority);
+    }
+
+    private bool Claim(string who, int priority = 0)
     {
         if (Stop(who) != StopReason.None)
             return false;
@@ -165,7 +188,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // safe to call every tick and a pointer wiped every tick would notice nothing at all.
         var already = _lease.Held(who);
 
-        if (!_lease.Take(who))
+        if (!_lease.Take(who, priority))
             return false;
 
         // A new claim is a new session, and it starts with no memory of where the cursor has been.

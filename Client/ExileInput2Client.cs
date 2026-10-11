@@ -41,6 +41,7 @@ public sealed class ExileInput2Client
     private readonly string _me;
 
     private Func<string, bool> _take;
+    private Func<string, int, bool> _takeWithPriority;
     private Func<string, bool> _release;
     private Func<string, RectangleF, bool, bool, bool> _moveTo;
     private Func<string, Vector2, bool, bool, bool> _moveToPoint;
@@ -161,6 +162,7 @@ public sealed class ExileInput2Client
             _forget = b.GetMethod<Func<string, bool>>("ExileInput2.Forget");
             _setTolerance = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetTolerance");
             _setShortestMove = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetShortestMove");
+            _takeWithPriority = b.GetMethod<Func<string, int, bool>>("ExileInput2.TakeWithPriority");
             _setMoveTimePerRootPixel = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetMoveTimePerRootPixel");
             _ignorePlayerMouse = b.GetMethod<Func<string, int, bool, bool>>("ExileInput2.IgnorePlayerMouse");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
@@ -179,6 +181,17 @@ public sealed class ExileInput2Client
     {
         Look();
         return _take?.Invoke(_me) ?? false;
+    }
+
+    /// <summary>
+    /// Claims the cursor at a priority, taking it from a holder that took it at a lower one - an ordinary Take is 0. The
+    /// holder is stopped with "TakenOver" and must release before it can take it again. False when a holder of the same
+    /// or higher priority has it, or from an ExileInput2 too old to have it.
+    /// </summary>
+    public bool TakeWithPriority(int priority)
+    {
+        Look();
+        return _takeWithPriority?.Invoke(_me, priority) ?? false;
     }
 
     /// <summary>Hands the cursor back, releasing any keys this plugin was holding.</summary>

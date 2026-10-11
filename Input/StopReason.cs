@@ -22,4 +22,7 @@ public enum StopReason
 
     /// <summary>Something in the game is taking typed input - chat, a search box.</summary>
     GameIsTakingInput,
+
+    /// <summary>Another caller took the cursor with a higher priority. See ExileInput2.TakeWithPriority.</summary>
+    TakenOver,
 }

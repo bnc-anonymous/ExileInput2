@@ -61,6 +61,9 @@ public sealed class Lease
     /// <summary>Who holds it, or null when it is free.</summary>
     public string Holder => Stale ? null : _holder;
 
+    /// <summary>The priority the holder took it with: 0 for an ordinary Take. See ExileInput2.TakeWithPriority.</summary>
+    public int HolderPriority { get; private set; }
+
     private bool Stale => _holder != null && Since > Expiry;
 
     /// <summary>
@@ -70,7 +73,10 @@ public sealed class Lease
     /// whether it already holds it is doing something reasonable, and refusing that would only
     /// teach callers to keep a flag this class already keeps for them.
     /// </summary>
-    public bool Take(string who)
+    public bool Take(string who) => Take(who, 0);
+
+    /// <summary>Claims the cursor at a priority, recorded for a later TakeWithPriority to compare against.</summary>
+    public bool Take(string who, int priority)
     {
         if (string.IsNullOrWhiteSpace(who))
             return false;
@@ -80,6 +86,7 @@ public sealed class Lease
 
         _holder = who;
         _acted = Reading;
+        HolderPriority = priority;
         return true;
     }
 
