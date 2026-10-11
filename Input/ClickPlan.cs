@@ -165,25 +165,26 @@ internal sealed class ClickPlan
             if (!_doneAt.TryGetValue(i, out var at) || now - at >= DoneFadeFor)
                 continue;
 
-            DrawItem(graphics, i, false, opacity * (1f - (float)((now - at).TotalMilliseconds / DoneFadeFor.TotalMilliseconds)));
+            DrawItem(graphics, i, DoneColour, opacity * (1f - (float)((now - at).TotalMilliseconds / DoneFadeFor.TotalMilliseconds)));
         }
 
         if (doneOnly)
             return;
 
         for (var i = Math.Max(0, first); i < Items.Count; i++)
-            DrawItem(graphics, i, i == first, opacity);
+            DrawItem(graphics, i, i == first ? CurrentColour : LaterColour, opacity);
     }
 
-    /// <summary>One click's path and marks, at this opacity. See Draw.</summary>
-    private void DrawItem(Graphics graphics, int i, bool current, float opacity)
+    /// <summary>One click's path and marks in its state's colour, at this opacity. See Draw.</summary>
+    private void DrawItem(Graphics graphics, int i, Color state, float opacity)
     {
-        Color Faded(Color colour) => Color.FromArgb((int)(colour.A * Math.Clamp(opacity, 0f, 1f)), colour.R, colour.G, colour.B);
+        Color Faded(int alpha) => Color.FromArgb((int)(alpha * Math.Clamp(opacity, 0f, 1f)), state.R, state.G, state.B);
 
-        var bright = Faded(Bright);
-        var dim = Faded(Dim);
+        var current = state == CurrentColour;
+        var bright = Faded(255);
+        var dim = Faded(UpAlpha);
         var item = Items[i];
-        var line = Faded(current ? Color.FromArgb(230, Bright) : Color.FromArgb(110, 255, 255, 255));
+        var line = Faded(current ? 230 : 150);
         var points = new Vector2[PathSamples];
 
         for (var k = 0; k < PathSamples; k++)
@@ -227,13 +228,22 @@ internal sealed class ClickPlan
     }
 
     /// <summary>
-    /// A button or modifier going down, and the current path: AutoExpedition's green, its Next explosive colour's
-    /// default, so the plan reads as that plugin's other markings do.
+    /// The click being made and the way to it: AutoExpedition's green, its Next explosive colour's default, so the plan
+    /// reads as that plugin's markings do.
     /// </summary>
-    private static readonly Color Bright = Color.FromArgb(255, 90, 255, 120);
+    private static readonly Color CurrentColour = Color.FromArgb(255, 90, 255, 120);
 
-    /// <summary>A button or modifier coming up, and the clicks' numbers: light enough to read over the game.</summary>
-    private static readonly Color Dim = Color.FromArgb(215, 225, 225, 225);
+    /// <summary>The clicks still to come and their ways: AutoExpedition's yellow, its Later explosives colour's default.</summary>
+    private static readonly Color LaterColour = Color.FromArgb(255, 255, 210, 80);
+
+    /// <summary>The clicks made, fading out. See DoneFadeFor.</summary>
+    private static readonly Color DoneColour = Color.FromArgb(255, 170, 170, 170);
+
+    /// <summary>
+    /// How strong a mark of something coming up - a button, a modifier - and a click's number are, against the full
+    /// strength of something going down, in the same colour.
+    /// </summary>
+    private const int UpAlpha = 160;
 
     /// <summary>C for ctrl, S for shift, A for alt; "" for none.</summary>
     private static string ModifierLetters(IReadOnlyList<Keys> modifiers)
