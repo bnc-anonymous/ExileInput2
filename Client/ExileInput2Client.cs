@@ -67,7 +67,7 @@ public sealed class ExileInput2Client
     private Func<string, int, bool> _setMoveTimePerRootPixel;
     private Func<string, int, bool, bool> _ignorePlayerMouse;
     private Func<string, Keys[], bool> _stopOnPlayerKeys;
-    private Func<string, int, bool> _blockPlayerKeys;
+    private Func<string, int, bool, bool> _blockPlayerKeys;
     private Func<string, string> _stopped;
 
     private Func<string, string> _stopDetail;
@@ -168,7 +168,7 @@ public sealed class ExileInput2Client
             _setMoveTimePerRootPixel = b.GetMethod<Func<string, int, bool>>("ExileInput2.SetMoveTimePerRootPixel");
             _ignorePlayerMouse = b.GetMethod<Func<string, int, bool, bool>>("ExileInput2.IgnorePlayerMouse");
             _stopOnPlayerKeys = b.GetMethod<Func<string, Keys[], bool>>("ExileInput2.StopOnPlayerKeys");
-            _blockPlayerKeys = b.GetMethod<Func<string, int, bool>>("ExileInput2.BlockPlayerKeys");
+            _blockPlayerKeys = b.GetMethod<Func<string, int, bool, bool>>("ExileInput2.BlockPlayerKeys");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
         }
@@ -446,12 +446,13 @@ public sealed class ExileInput2Client
     /// <summary>
     /// For up to three seconds: every key the player holds is let go, so a walk on WASD stops, and their key presses are
     /// dropped before the game sees them; releases and keys sent through ExileInput2 pass. 0 ends a block early. Does not
-    /// need the cursor taken. False from an ExileInput2 too old to have it.
+    /// need the cursor taken. With restoreHeldKeys, the letters, digits and Space held when the block began and still held
+    /// when it ends are pressed again, so a walk on a held key goes on. False from an ExileInput2 too old to have it.
     /// </summary>
-    public bool BlockPlayerKeys(int ms)
+    public bool BlockPlayerKeys(int ms, bool restoreHeldKeys)
     {
         Look();
-        return _blockPlayerKeys?.Invoke(_me, ms) ?? false;
+        return _blockPlayerKeys?.Invoke(_me, ms, restoreHeldKeys) ?? false;
     }
 
     /// <summary>Presses and releases a key.</summary>

@@ -131,8 +131,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.StopOnPlayerKeys", (string who, Keys[] except) => StopOnPlayerKeys(who, except));
 
         // For a pickup that must not be walked away from: the player's held keys let go and their key presses dropped for
-        // this long, 0 to end it. See BlockPlayerKeys.
-        b.SaveMethod("ExileInput2.BlockPlayerKeys", (string who, int ms) => BlockPlayerKeys(who, ms));
+        // this long, 0 to end it, and optionally the held keys pressed again at the end. See BlockPlayerKeys.
+        b.SaveMethod("ExileInput2.BlockPlayerKeys",
+            (string who, int ms, bool restoreHeldKeys) => BlockPlayerKeys(who, ms, restoreHeldKeys));
 
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
@@ -591,9 +592,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// For up to KeyWatch.MostBlockMs: every key the player holds is let go, so a walk on WASD stops, and their key-downs
     /// are dropped before the game sees them; key-ups and this plugin's own keys pass. 0 ends a block early. Does not need
     /// the cursor, as a pickup's walk outlasts the click: the block runs to its time unless ended. Mouse buttons are not
-    /// let go. See KeyWatch.
+    /// let go. With restoreHeldKeys, the letters, digits and Space held at the start and still held at the end are pressed
+    /// again when the block ends. See KeyWatch.NoteHeld.
     /// </summary>
-    private bool BlockPlayerKeys(string who, int ms)
+    private bool BlockPlayerKeys(string who, int ms, bool restoreHeldKeys)
     {
         if (string.IsNullOrWhiteSpace(who))
             return false;
@@ -606,7 +608,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             {
                 if (key is not (0x5B or 0x5C) && (GetAsyncKeyState(key) & 0x8000) != 0)
                 {
-                    KeyWatch.NoteHeld(key);
+                    if (restoreHeldKeys)
+                        KeyWatch.NoteHeld(key);
+
                     Safe(() => ExileCore2.Input.KeyUp((Keys)key));
                 }
             }
