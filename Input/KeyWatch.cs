@@ -93,13 +93,39 @@ internal static class KeyWatch
     /// <summary>Whether the player's key-downs are being dropped now.</summary>
     public static bool Blocking => Environment.TickCount64 < Interlocked.Read(ref _blockUntil);
 
-    /// <summary>Drops the player's key-downs for this long from now, replacing any block; 0 ends it.</summary>
-    public static void Block(int ms)
+    /// <summary>
+    /// The virtual-key code whose press ends a block and the mouse block with it, 0 for none. The press itself is
+    /// dropped, so it does not also act as that key. See Hook and BlockCancelled.
+    /// </summary>
+    private static volatile int _cancelKey;
+
+    /// <summary>Set by the hook when the player's press of the cancel key ended a block. See TakeBlockCancelled.</summary>
+    private static volatile bool _blockCancelled;
+
+    /// <summary>Whether the player ended the last block with the cancel key, cleared by the read.</summary>
+    public static bool TakeBlockCancelled()
+    {
+        var cancelled = _blockCancelled;
+        _blockCancelled = false;
+        return cancelled;
+    }
+
+    /// <summary>
+    /// Drops the player's key-downs for this long from now, replacing any block; 0 ends it. A press of cancelKey, if
+    /// not 0, ends it early, and the mouse block with it.
+    /// </summary>
+    public static void Block(int ms, int cancelKey = 0)
     {
         ms = Math.Clamp(ms, 0, MostBlockMs);
 
         lock (Gate)
         {
+            if (ms > 0)
+            {
+                _cancelKey = cancelKey;
+                _blockCancelled = false;
+            }
+
             Interlocked.Exchange(ref _blockUntil, ms == 0 ? 0 : Environment.TickCount64 + ms);
 
             if (ms == 0 || _thread is { IsAlive: true })
@@ -177,7 +203,18 @@ internal static class KeyWatch
                 // again. Remembering presses made during the block would let Alt then F4, both pressed while blocked,
                 // arrive together when it ends and close the game.
                 if (Blocking)
+                {
+                    // The cancel key: the player taking control back. Both blocks end now, in the hook, so this does
+                    // not wait on the caller's next tick; the caller learns of it through TakeBlockCancelled.
+                    if (_cancelKey != 0 && (int)info.VirtualKey == _cancelKey)
+                    {
+                        Interlocked.Exchange(ref _blockUntil, 0);
+                        MouseBlock.Stop();
+                        _blockCancelled = true;
+                    }
+
                     return 1;
+                }
 
                 if (_watching)
                     Pressed.Enqueue((int)info.VirtualKey);

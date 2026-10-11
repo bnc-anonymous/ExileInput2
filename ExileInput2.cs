@@ -131,9 +131,13 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.StopOnPlayerKeys", (string who, Keys[] except) => StopOnPlayerKeys(who, except));
 
         // For a pickup that must not be walked away from: the player's held keys let go and their key presses dropped for
-        // this long, 0 to end it, and optionally the held keys pressed again at the end. See BlockPlayerKeys.
+        // this long, 0 to end it, and optionally the held keys pressed again at the end; a press of cancelKey ends it
+        // early. See BlockPlayerKeys.
         b.SaveMethod("ExileInput2.BlockPlayerKeys",
-            (string who, int ms, bool restoreHeldKeys) => BlockPlayerKeys(who, ms, restoreHeldKeys));
+            (string who, int ms, bool restoreHeldKeys, Keys cancelKey) => BlockPlayerKeys(who, ms, restoreHeldKeys, cancelKey));
+
+        // Whether the player ended the last key block with its cancel key, cleared by the read. See KeyWatch.
+        b.SaveMethod("ExileInput2.KeyBlockCancelled", (string who) => !string.IsNullOrWhiteSpace(who) && KeyWatch.TakeBlockCancelled());
 
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
@@ -593,9 +597,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// are dropped before the game sees them; key-ups and this plugin's own keys pass. 0 ends a block early. Does not need
     /// the cursor, as a pickup's walk outlasts the click: the block runs to its time unless ended. Mouse buttons are not
     /// let go. With restoreHeldKeys, the letters, digits and Space held at the start and still held at the end are pressed
-    /// again when the block ends. See KeyWatch.NoteHeld.
+    /// again when the block ends. See KeyWatch.NoteHeld. A press of cancelKey, if not Keys.None, ends the key block and the
+    /// mouse block at once and is itself dropped; KeyBlockCancelled reports it.
     /// </summary>
-    private bool BlockPlayerKeys(string who, int ms, bool restoreHeldKeys)
+    private bool BlockPlayerKeys(string who, int ms, bool restoreHeldKeys, Keys cancelKey)
     {
         if (string.IsNullOrWhiteSpace(who))
             return false;
@@ -616,7 +621,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             }
         }
 
-        KeyWatch.Block(ms);
+        KeyWatch.Block(ms, (int)(cancelKey & Keys.KeyCode));
 
         return true;
     }
