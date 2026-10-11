@@ -86,7 +86,7 @@ public class ExileInput2Settings : ISettings
     [Menu("Most Move Time Per Frame (ms)",
         "How much of a move one frame may cover. A move is timed by the clock, so a frame\n" +
         "held up - the game or the HUD pausing - would otherwise jump the cursor along\n" +
-        "the move in one go. Each frame that reaches it takes 80 to 100% of it.\n\n" +
+        "the move in one go. Each frame that reaches it takes 80 to 100%% of it.\n\n" +
         "Lower makes a pause show as a smaller jump and a longer slow-down.")]
     public RangeNode<int> MostMoveTimePerFrameMs { get; set; } = new RangeNode<int>(25, 5, 100);
 
