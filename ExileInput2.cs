@@ -222,7 +222,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         if (Blocked() is var blocked and not StopReason.None)
         {
-            PointerFor(who).Stop(blocked);
+            PointerFor(who).Stop(blocked, _blockedDetail);
             return false;
         }
 
@@ -254,8 +254,11 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
             // Chat, a stash search box, anything with a caret in it. Keys sent while one of those
             // has focus are typed into it, and a click is the player dismissing it.
-            if (GameController.IngameState.FocusedInputElement != null)
+            if (GameController.IngameState.FocusedInputElement is { } focused)
+            {
+                _blockedDetail = FocusedSaid(focused);
                 return StopReason.GameIsTakingInput;
+            }
         }
         catch
         {
@@ -265,6 +268,30 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         }
 
         return StopReason.None;
+    }
+
+    /// <summary>What Blocked last saw, for the stop's detail: the element taking typed input. See FocusedSaid.</summary>
+    private string _blockedDetail = "";
+
+    /// <summary>
+    /// The element taking typed input, in one line, for a stop's detail: its address, place, size, visibility, text, and
+    /// its parent's address and text - enough to tell chat from a field some panel focuses for a moment.
+    /// </summary>
+    private static string FocusedSaid(ExileCore2.PoEMemory.Element focused)
+    {
+        try
+        {
+            var rect = focused.GetClientRectCache;
+            var parent = focused.Parent;
+
+            return $"the game reported typed input going to element {focused.Address:X} at ({rect.X:0},{rect.Y:0} " +
+                   $"{rect.Width:0}x{rect.Height:0}), visible {focused.IsVisible}, text \"{focused.Text}\", under " +
+                   (parent == null ? "no parent" : $"{parent.Address:X}, text \"{parent.Text}\"");
+        }
+        catch
+        {
+            return "the game reported typed input going to an element that could not be read";
+        }
     }
 
     private StopReason Stop(string who) =>
@@ -1056,7 +1083,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             // The window going away is as good a reason to stop as the player taking the mouse
             // back: a click sent while the game is not in front lands in whatever is.
             if (Blocked() is var blocked and not StopReason.None)
-                pointer.Stop(blocked);
+                pointer.Stop(blocked, _blockedDetail);
 
             // A key of the player's, to a holder that asked to be stopped by keys. See StopOnPlayerKeys.
             if (_keyStops.TryGetValue(driving, out var except))
