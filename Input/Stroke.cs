@@ -17,6 +17,9 @@ internal interface IButtons
     void Press(bool right, int holdMs);
     bool PressHeld { get; }
     void Release();
+
+    /// <summary>Release, leaving these keys down. See Stroke.KeepHeld.</summary>
+    void ReleaseExcept(IReadOnlyList<Keys> keep) => Release();
 }
 
 /// <summary>The real ones.</summary>
@@ -31,6 +34,7 @@ internal sealed class RealButtons : IButtons
     public void Press(bool right, int holdMs) => Buttons.Press(right, holdMs);
     public bool PressHeld => Buttons.PressHeld;
     public void Release() => Buttons.Release();
+    public void ReleaseExcept(IReadOnlyList<Keys> keep) => Buttons.Release(keep);
 }
 
 /// <summary>
@@ -289,9 +293,20 @@ internal sealed class Stroke
             LetGo();
     }
 
+    /// <summary>
+    /// Keys something else holds down past this gesture, which its end leaves alone: a loiter holding ctrl for the
+    /// ctrl+click it waits on. The reforge button's plain click ended just after the loiter had pressed ctrl, let every
+    /// modifier up, and the ctrl+click on the tablet pressed it again. See ExileInput2's _loiterKeys.
+    /// </summary>
+    public Func<IReadOnlyList<Keys>> KeepHeld { get; set; }
+
     private void LetGo()
     {
-        _keys.Release();
+        if (KeepHeld?.Invoke() is { Count: > 0 } keep)
+            _keys.ReleaseExcept(keep);
+        else
+            _keys.Release();
+
         _phase = Phase.Idle;
         _held = Modifier.None;
 

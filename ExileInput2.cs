@@ -1038,9 +1038,22 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                 // the stroke because a stroke that reached into the pointer would be two things.
                 OnLetGo = () =>
                 {
+                    // **Not the keys a loiter holds for the click it waits on.** See _loiterKeys and KeepHeld.
+                    if (_loiterKeys.TryGetValue(who, out var kept))
+                    {
+                        var keys = KeysFor(who);
+
+                        foreach (var key in keys.Down.ToList())
+                            if (Array.IndexOf(kept, key) < 0)
+                                keys.Let(key);
+
+                        return;
+                    }
+
                     KeysFor(who).ReleaseAll();
                     PointerFor(who).ModifiersLetGo();
                 },
+                KeepHeld = () => _loiterKeys.TryGetValue(who, out var kept) ? kept : null,
             };
         }
 

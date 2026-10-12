@@ -325,7 +325,7 @@ internal static class Buttons
     /// All three go up regardless of what was pressed. The whole point of this method is that it
     /// does not have to know, and releasing something never held is free.
     /// </summary>
-    public static void Release()
+    public static void Release(IReadOnlyList<Keys> keep = null)
     {
         // The mouse button too, which this did not do and every caller assumed it did. Abandon, a
         // stale lease and the plugin unloading all come through here; a drag running when any of
@@ -335,16 +335,26 @@ internal static class Buttons
         var held = _holding;
         _holding = Modifier.None;
 
+        // Keys another holder keeps down - a loiter's ctrl, for the click it waits on - are left alone. Only a gesture
+        // ending passes any; every way of giving the cursor up releases everything. See Stroke.KeepHeld.
+        bool Kept(Keys key) => keep != null && System.Linq.Enumerable.Contains(keep, key);
+
         try
         {
             foreach (var key in held)
-                Input.KeyUp(key);
+                if (!Kept(key))
+                    Input.KeyUp(key);
 
             // And the standard three on top, in case something went down by a path that did not
             // record itself. Cheap insurance against the failure that is hardest to notice.
-            Input.KeyUp(Keys.LControlKey);
-            Input.KeyUp(Keys.LShiftKey);
-            Input.KeyUp(Keys.LMenu);
+            if (!Kept(Keys.LControlKey))
+                Input.KeyUp(Keys.LControlKey);
+
+            if (!Kept(Keys.LShiftKey))
+                Input.KeyUp(Keys.LShiftKey);
+
+            if (!Kept(Keys.LMenu))
+                Input.KeyUp(Keys.LMenu);
         }
         catch
         {
