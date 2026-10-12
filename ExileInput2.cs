@@ -127,9 +127,36 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                 return false;
 
             // Any held from a loiter before, let go unless these are the same. See _loiterKeys.
-            EndLoiterKeys(who, modifiers ?? Modifier.None);
+            var keysCarried = EndLoiterKeys(who, modifiers ?? Modifier.None);
+            var pointer = PointerFor(who);
 
-            PointerFor(who).Loiter(centre, radius, forMs, modifiers);
+            // **Along the plan, when its next click is where the loiter goes.** A loiter's own move to its point broke
+            // off the curve the plan had drawn there - after the third load into the reforging bench, a sharp turn towards
+            // the reforged tablet's slot while the game had not yet put the tablet there - and the click on the tablet
+            // was planned afresh. So the planned journey is taken, the loiter goes round where it lands, and the move
+            // for that click, when it comes, is that planned click. See _loiterOnPlanned.
+            if (_plans.TryGetValue(who, out var plan) && plan.Next < plan.Items.Count &&
+                plan.Items[plan.Next] is { PointGiven: false } next && MousePointer.Holds(next.Rect, centre))
+            {
+                var carried = keysCarried | CarryModifiers(who, modifiers);
+
+                pointer.AimAlong(next.Rect, next.To, modifiers ?? Modifier.None, next.Drift,
+                    next.LeadMs > 0 ? next.LeadMs : HumanTiming.Ms(Settings.UsedModifierTiming), next.MinMs, next.MsPerRootPx,
+                    next.Control1, next.Control2, next.Shape);
+                plan.Current = next;
+                plan.Next++;
+
+                if (carried)
+                    pointer.ModifiersAlreadyDown();
+
+                pointer.LoiterOnArrival(next.To, radius, forMs);
+                _loiterOnPlanned[who] = next.Rect;
+            }
+            else
+            {
+                _loiterOnPlanned.Remove(who);
+                pointer.Loiter(centre, radius, forMs, modifiers);
+            }
 
             if (Modifier.Any(modifiers))
                 _loiterKeys[who] = modifiers;
@@ -344,6 +371,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     private readonly Dictionary<string, Keys[]> _loiterKeys = new();
 
     /// <summary>
+    /// Each caller's planned click a loiter travelled to along the plan, by its target: the move asked for it next is that
+    /// click, made from wherever the loiter has got to. See the Loiter bridge method and Move.
+    /// </summary>
+    private readonly Dictionary<string, RectangleF> _loiterOnPlanned = new();
+
+    /// <summary>
     /// Ends what a loiter holds as the next thing asks for these modifiers: true when they are the same, and still down
     /// for that move to keep; else they are let go and false. False with nothing held.
     /// </summary>
@@ -452,6 +485,19 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         var pointer = PointerFor(who);
         var carried = EndLoiterKeys(who, modifiers ?? Modifier.None) | CarryModifiers(who, modifiers);
+
+        // **The planned click a loiter has already travelled to**: from wherever the loiter has got to, onto the target,
+        // with the plan going on from the click after it. See _loiterOnPlanned.
+        if (_loiterOnPlanned.Remove(who, out var loitered) && loitered == rect &&
+            _plans.TryGetValue(who, out var held) && held.Current is { } current && current.Rect == rect)
+        {
+            pointer.Aim(rect, modifiers ?? Modifier.None);
+
+            if (carried)
+                pointer.ModifiersAlreadyDown();
+
+            return true;
+        }
 
         // The queue's next click, where it was planned by its rectangle: the point, journey and lead planned for it. Any
         // other rectangle drops the queue.
@@ -1146,6 +1192,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         FadePlan(who, "the caller handed the cursor back");
         _clicksOnArrival.Remove(who);
         _loiterKeys.Remove(who);
+        _loiterOnPlanned.Remove(who);
         _lease.Release(who);
         return true;
     }
@@ -1245,6 +1292,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             ForgetKeyStop(_held);
             _clicksOnArrival.Remove(_held);
             _loiterKeys.Remove(_held);
+            _loiterOnPlanned.Remove(_held);
             _held = null;
         }
         else if (_lease.Holder != null)
@@ -1267,6 +1315,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         Buttons.Release();
         _drags.Remove(who);
         _loiterKeys.Remove(who);
+        _loiterOnPlanned.Remove(who);
         FadePlan(who, $"stopped ({reason})");
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();

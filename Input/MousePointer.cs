@@ -1057,7 +1057,15 @@ internal sealed class MousePointer
     public void Loiter(Vector2 centre, float radius, int forMs = 0, Keys[] modifiers = null)
     {
         Place(centre, modifiers ?? []);
+        LoiterOnArrival(centre, radius, forMs);
+    }
 
+    /// <summary>
+    /// The loiter alone, round a point the journey in hand is already going to: for a loiter that takes a planned
+    /// journey there rather than a move of its own. See Loiter and ExileInput2's planned loiter.
+    /// </summary>
+    public void LoiterOnArrival(Vector2 centre, float radius, int forMs = 0)
+    {
         var shape = (LoiterShape)_rng.Next(3);
 
         _loiter = new LoiterState(centre, Math.Max(2f, radius * (0.7f + 0.6f * (float)_rng.NextDouble())), shape,
