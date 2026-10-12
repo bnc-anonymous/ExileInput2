@@ -699,6 +699,27 @@ internal sealed class MousePointer
     /// <summary>A draw from this pointer's random source, from nought to one. See ClickPlan.Make.</summary>
     internal double Chance() => _rng.NextDouble();
 
+    /// <summary>
+    /// The game window's size, the extent of the client space points are given in, or zero when it cannot be read - with
+    /// no game, as in the tests. See ClickPlan.Make, which keeps its curves inside it.
+    /// </summary>
+    internal Vector2 ClientSize
+    {
+        get
+        {
+            try
+            {
+                var window = _gc?.Window.GetWindowRectangle();
+
+                return window is { Width: > 0f, Height: > 0f } rect ? new Vector2(rect.Width, rect.Height) : Vector2.Zero;
+            }
+            catch
+            {
+                return Vector2.Zero;
+            }
+        }
+    }
+
     public void AimAlong(RectangleF rect, Vector2 target, Keys[] modifiers, float drift, int modifierLeadMs, float minMs,
         float msPerRootPx, Vector2? control1 = null, Vector2? control2 = null, Travel.Flourish? shape = null)
     {

@@ -132,6 +132,7 @@ internal sealed class ClickPlan
             var perRootPx = pointer.TravelMsPerRootPx;
             var length = line.Length();
             var shape = Travel.Flourish.None;
+            var swooped = false;
 
             // **A swoop, now and then**: both controls pushed out to the side the way was already turning, and the time
             // stretched as the duration's rule would have it for the longer way, so the cursor does not whip round it.
@@ -144,7 +145,18 @@ internal sealed class ClickPlan
 
                 control1 += outward;
                 control2 += outward;
+                swooped = true;
+            }
 
+            // **Kept inside the game window.** A swoop's reach is a share of the way's own length, so on a long way it
+            // went far past the screen's edge: the cursor stopped at the edge, away from its path, and the move was
+            // taken for the player's - a junk tablet's way of 1,078px sent to y 1,558 on a 1,440 screen (2026-10-12
+            // 12:30:22). The curve is pulled towards the straight line until it fits, and is straight where nothing
+            // short of that does.
+            (control1, control2) = KeptInWindow(from, control1, control2, to, pointer.ClientSize);
+
+            if (swooped)
+            {
                 var curved = CubicLength(from, control1, control2, to);
 
                 shape = shape with
@@ -160,7 +172,9 @@ internal sealed class ClickPlan
                 var heading = arriving.Length() > 1f ? Vector2.Normalize(arriving) : line / length;
                 var by = Math.Clamp(length * (0.03f + 0.04f * (float)pointer.Chance()), 4f, 24f);
 
-                shape = shape with { Overshoot = heading * by, SettleMs = 60f + 60f * (float)pointer.Chance() };
+                // Not past the window's edge, where the cursor would stop short of where it was sent.
+                if (Inside(to + heading * by, pointer.ClientSize))
+                    shape = shape with { Overshoot = heading * by, SettleMs = 60f + 60f * (float)pointer.Chance() };
             }
 
             var path = perRootPx <= 0
@@ -182,6 +196,60 @@ internal sealed class ClickPlan
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// A curve's controls brought inside a window of this size: each halved towards the straight line's own, at most
+    /// KeptInWindowHalvings times, then the straight line's. As they were when the size is not known or either end lies
+    /// outside the window, which no control can mend. See Make.
+    /// </summary>
+    private static (Vector2, Vector2) KeptInWindow(Vector2 from, Vector2 control1, Vector2 control2, Vector2 to, Vector2 size)
+    {
+        if (size.X <= 0f || size.Y <= 0f || !Inside(from, size) || !Inside(to, size))
+            return (control1, control2);
+
+        var straight1 = from + (to - from) / 3f;
+        var straight2 = from + (to - from) * 2f / 3f;
+
+        for (var k = 0; k < KeptInWindowHalvings; k++)
+        {
+            if (CubicInside(from, control1, control2, to, size))
+                return (control1, control2);
+
+            control1 = straight1 + (control1 - straight1) / 2f;
+            control2 = straight2 + (control2 - straight2) / 2f;
+        }
+
+        return CubicInside(from, control1, control2, to, size) ? (control1, control2) : (straight1, straight2);
+    }
+
+    /// <summary>How many times KeptInWindow halves a curve's bend before it goes straight. Chosen.</summary>
+    private const int KeptInWindowHalvings = 6;
+
+    /// <summary>
+    /// How far inside the window's edge a curve is kept, in pixels: room for the wander laid on it as it is travelled,
+    /// CreepPx. Chosen.
+    /// </summary>
+    private const float WindowMargin = 8f;
+
+    /// <summary>Whether a point lies inside a window of this size, WindowMargin in from each edge.</summary>
+    private static bool Inside(Vector2 at, Vector2 size) =>
+        size.X <= 0f || size.Y <= 0f ||
+        at.X >= WindowMargin && at.Y >= WindowMargin && at.X <= size.X - WindowMargin && at.Y <= size.Y - WindowMargin;
+
+    /// <summary>Whether a cubic curve lies inside a window of this size, by 24 points along it.</summary>
+    private static bool CubicInside(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Vector2 size)
+    {
+        for (var k = 1; k < 24; k++)
+        {
+            var s = k / 24f;
+            var r = 1f - s;
+
+            if (!Inside(r * r * r * a + 3f * r * r * s * b + 3f * r * s * s * c + s * s * s * d, size))
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>A cubic curve's length, near enough: the sum of 24 straight pieces along it.</summary>
