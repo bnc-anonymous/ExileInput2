@@ -72,28 +72,30 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         var b = GameController.PluginBridge;
 
+        StartMover();
+
         // Claiming. Take is safe to call every tick rather than once, so a caller need not keep a
         // flag about whether it already holds the cursor.
-        b.SaveMethod("ExileInput2.Take", (string who) => Claim(who));
-        b.SaveMethod("ExileInput2.Release", (string who) => Give(who));
+        b.SaveMethod("ExileInput2.Take", (string who) => Gated(() => Claim(who)));
+        b.SaveMethod("ExileInput2.Release", (string who) => Gated(() => Give(who)));
 
         // Takes the cursor from a holder of lower priority, which is stopped with TakenOver. See TakeWithPriority.
-        b.SaveMethod("ExileInput2.TakeWithPriority", (string who, int priority) => TakeWithPriority(who, priority));
-        b.SaveMethod("ExileInput2.Holder", () => _lease.Holder);
+        b.SaveMethod("ExileInput2.TakeWithPriority", (string who, int priority) => Gated(() => TakeWithPriority(who, priority)));
+        b.SaveMethod("ExileInput2.Holder", () => Gated(() => _lease.Holder));
 
         // Why a caller lost the cursor, as a string so the bridge carries nothing this plugin
         // defines - "" while all is well, otherwise a StopReason name. A caller that never asks
         // simply stops working, which is the safe way round for it to be wrong.
-        b.SaveMethod("ExileInput2.Stopped", (string who) => StoppedReason(who));
+        b.SaveMethod("ExileInput2.Stopped", (string who) => Gated(() => StoppedReason(who)));
 
         // What the last stop saw, for a caller to record; never drawn here. See MousePointer.StopDetail.
-        b.SaveMethod("ExileInput2.StopDetail", (string who) => PointerFor(who).StopDetail);
+        b.SaveMethod("ExileInput2.StopDetail", (string who) => Gated(() => PointerFor(who).StopDetail));
 
         // Aiming. A rect is what every caller has, since that is what an element reports.
         b.SaveMethod("ExileInput2.MoveTo",
-            (string who, RectangleF rect, bool ctrl, bool shift) => Move(who, rect, Modifier.Of(ctrl, shift)));
+            (string who, RectangleF rect, bool ctrl, bool shift) => Gated(() => Move(who, rect, Modifier.Of(ctrl, shift))));
         b.SaveMethod("ExileInput2.MoveToPoint",
-            (string who, Vector2 client, bool ctrl, bool shift) => MoveTo(who, client, Modifier.Of(ctrl, shift)));
+            (string who, Vector2 client, bool ctrl, bool shift) => Gated(() => MoveTo(who, client, Modifier.Of(ctrl, shift))));
 
         // The same three, taking the modifiers as a set.
         //
@@ -106,73 +108,73 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         // So the old names keep working, unchanged, forever if need be. A caller moves to the new
         // ones when it wants a modifier the old shape cannot express, and not before.
         b.SaveMethod("ExileInput2.MoveToKeys",
-            (string who, RectangleF rect, Keys[] modifiers) => Move(who, rect, modifiers));
+            (string who, RectangleF rect, Keys[] modifiers) => Gated(() => Move(who, rect, modifiers)));
         b.SaveMethod("ExileInput2.MoveToPointKeys",
-            (string who, Vector2 client, Keys[] modifiers) => MoveTo(who, client, modifiers));
-        b.SaveMethod("ExileInput2.Arrived", (string who) => Arrived(who));
+            (string who, Vector2 client, Keys[] modifiers) => Gated(() => MoveTo(who, client, modifiers)));
+        b.SaveMethod("ExileInput2.Arrived", (string who) => Gated(() => Arrived(who)));
 
         // The caller's last move: its wait for a click's button, and its own length, in milliseconds; then its swoop's
         // stretch of time (1 for none) and how far it overshot, in pixels (0 for none). See MousePointer.
         b.SaveMethod("ExileInput2.LastMoveTimes",
-            (string who) => new[]
+            (string who) => Gated(() => new[]
             {
                 (float)PointerFor(who).LastMoveDelayMs, PointerFor(who).LastMoveTravelMs, PointerFor(who).LastMoveShape.DurationScale,
                 PointerFor(who).LastMoveShape.Overshoot.Length(),
-            });
+            }));
 
         // A queue of clicks asked for ahead of time, drawn on screen when show is set. Empty points drop it. See PlanClicks.
         b.SaveMethod("ExileInput2.PlanClicks",
             (string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs, bool show) =>
-                PlanClicks(who, rects, points, rights, modifiers, shortestMoveMs, show));
+                Gated(() => PlanClicks(who, rects, points, rights, modifiers, shortestMoveMs, show)));
         // Clicks added to the end of a caller's queue rather than the queue planned again. See ExtendPlan.
         b.SaveMethod("ExileInput2.ExtendPlan",
             (string who, RectangleF[] rects, Vector2[] points, bool[] rights, Keys[][] modifiers, int[] shortestMoveMs) =>
-                ExtendPlan(who, rects, points, rights, modifiers, shortestMoveMs));
-        b.SaveMethod("ExileInput2.Drift", (string who) => Drift(who));
-        b.SaveMethod("ExileInput2.Aiming", (string who) => Aiming(who));
-        b.SaveMethod("ExileInput2.Expected", (string who) => Expected(who));
-        b.SaveMethod("ExileInput2.Forget", (string who) => Forget(who));
+                Gated(() => ExtendPlan(who, rects, points, rights, modifiers, shortestMoveMs)));
+        b.SaveMethod("ExileInput2.Drift", (string who) => Gated(() => Drift(who)));
+        b.SaveMethod("ExileInput2.Aiming", (string who) => Gated(() => Aiming(who)));
+        b.SaveMethod("ExileInput2.Expected", (string who) => Gated(() => Expected(who)));
+        b.SaveMethod("ExileInput2.Forget", (string who) => Gated(() => Forget(who)));
 
         // Per caller, over the shared default. The tolerance that suits a stash tab is not the one
         // that suits an inventory cell, and a single figure would be wrong for one of them - so the
         // setting is the default and a caller that knows better says so.
-        b.SaveMethod("ExileInput2.SetTolerance", (string who, int px) => SetTolerance(who, px));
-        b.SaveMethod("ExileInput2.SetShortestMove", (string who, int ms) => SetShortestMove(who, ms));
-        b.SaveMethod("ExileInput2.SetMoveTimePerRootPixel", (string who, int ms) => SetMoveTimePerRootPixel(who, ms));
+        b.SaveMethod("ExileInput2.SetTolerance", (string who, int px) => Gated(() => SetTolerance(who, px)));
+        b.SaveMethod("ExileInput2.SetShortestMove", (string who, int ms) => Gated(() => SetShortestMove(who, ms)));
+        b.SaveMethod("ExileInput2.SetMoveTimePerRootPixel", (string who, int ms) => Gated(() => SetMoveTimePerRootPixel(who, ms)));
 
         // For one move and click that must land whatever the player's hand does: the player's mouse stops nothing for
         // this long, and with block it is dropped as well. See IgnorePlayerMouse.
-        b.SaveMethod("ExileInput2.IgnorePlayerMouse", (string who, int ms, bool block) => IgnorePlayerMouse(who, ms, block));
+        b.SaveMethod("ExileInput2.IgnorePlayerMouse", (string who, int ms, bool block) => Gated(() => IgnorePlayerMouse(who, ms, block)));
 
         // For this claim, the player's own key presses - any but these - stop the caller, as moving the mouse does.
         // See StopOnPlayerKeys.
-        b.SaveMethod("ExileInput2.StopOnPlayerKeys", (string who, Keys[] except) => StopOnPlayerKeys(who, except));
+        b.SaveMethod("ExileInput2.StopOnPlayerKeys", (string who, Keys[] except) => Gated(() => StopOnPlayerKeys(who, except)));
 
         // For a pickup that must not be walked away from: the player's held keys let go and their key presses dropped for
         // this long, 0 to end it, and optionally the held keys pressed again at the end; a press of cancelKey ends it
         // early. See BlockPlayerKeys.
         b.SaveMethod("ExileInput2.BlockPlayerKeys",
-            (string who, int ms, bool restoreHeldKeys, Keys cancelKey) => BlockPlayerKeys(who, ms, restoreHeldKeys, cancelKey));
+            (string who, int ms, bool restoreHeldKeys, Keys cancelKey) => Gated(() => BlockPlayerKeys(who, ms, restoreHeldKeys, cancelKey)));
 
         // Whether the player ended the last key block with its cancel key, cleared by the read. See KeyWatch.
-        b.SaveMethod("ExileInput2.KeyBlockCancelled", (string who) => !string.IsNullOrWhiteSpace(who) && KeyWatch.TakeBlockCancelled());
+        b.SaveMethod("ExileInput2.KeyBlockCancelled", (string who) => Gated(() => !string.IsNullOrWhiteSpace(who) && KeyWatch.TakeBlockCancelled()));
 
         // Pressing.
         b.SaveMethod("ExileInput2.Click",
-            (string who, bool ctrl, bool shift, bool right) => Click(who, Modifier.Of(ctrl, shift), right));
+            (string who, bool ctrl, bool shift, bool right) => Gated(() => Click(who, Modifier.Of(ctrl, shift), right)));
         b.SaveMethod("ExileInput2.ClickKeys",
-            (string who, Keys[] modifiers, bool right) => Click(who, modifiers, right));
+            (string who, Keys[] modifiers, bool right) => Gated(() => Click(who, modifiers, right)));
 
         b.SaveMethod("ExileInput2.Drag",
-            (string who, Vector2 from, Vector2 to) => Drag(who, from, to));
-        b.SaveMethod("ExileInput2.Dragging", (string who) => Dragging(who));
-        b.SaveMethod("ExileInput2.DragMissed", (string who) => Missed(who));
-        b.SaveMethod("ExileInput2.DragTrace", (string who) => Trace(who));
+            (string who, Vector2 from, Vector2 to) => Gated(() => Drag(who, from, to)));
+        b.SaveMethod("ExileInput2.Dragging", (string who) => Gated(() => Dragging(who)));
+        b.SaveMethod("ExileInput2.DragMissed", (string who) => Gated(() => Missed(who)));
+        b.SaveMethod("ExileInput2.DragTrace", (string who) => Gated(() => Trace(who)));
 
-        b.SaveMethod("ExileInput2.Tap", (string who, Keys key) => Tap(who, key));
-        b.SaveMethod("ExileInput2.Hold", (string who, Keys key) => Hold(who, key));
-        b.SaveMethod("ExileInput2.Let", (string who, Keys key) => Let(who, key));
-        b.SaveMethod("ExileInput2.ReleaseKeys", (string who) => LetGo(who));
+        b.SaveMethod("ExileInput2.Tap", (string who, Keys key) => Gated(() => Tap(who, key)));
+        b.SaveMethod("ExileInput2.Hold", (string who, Keys key) => Gated(() => Hold(who, key)));
+        b.SaveMethod("ExileInput2.Let", (string who, Keys key) => Gated(() => Let(who, key)));
+        b.SaveMethod("ExileInput2.ReleaseKeys", (string who) => Gated(() => LetGo(who)));
 
         return true;
     }
@@ -950,7 +952,17 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
     public override void Tick()
     {
+        lock (InputGate)
+            TickGated();
+    }
+
+    private void TickGated()
+    {
         _lease.Expiry = TimeSpan.FromSeconds(Settings.ClaimExpirySeconds.Value);
+
+        // What the input thread last caught, said here: logging from another thread is not this host's to promise.
+        if (System.Threading.Interlocked.Exchange(ref _moverFault, null) is { } fault)
+            LogError($"ExileInput2: the input thread caught {fault}", 10f);
 
         // A click's button comes up when its hold is over, whoever holds the cursor now. See Buttons.Press.
         Buttons.Step();
@@ -968,6 +980,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (_lease.Holder is { } driving)
         {
             var pointer = PointerFor(driving);
+
+            // Moved on by the input thread while it runs; by this step otherwise. See ExileInput2Settings.RunInputTimingOnOwnThread.
+            pointer.MovedElsewhere = MoverRunning;
 
             // The window going away is as good a reason to stop as the player taking the mouse
             // back: a click sent while the game is not in front lands in whatever is.
@@ -1155,6 +1170,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// </summary>
     public override void Render()
     {
+        lock (InputGate)
+            RenderGated();
+    }
+
+    private void RenderGated()
+    {
         var now = DateTime.UtcNow;
 
         _fading.RemoveAll(f => now - f.Since >= FadeFor);
@@ -1179,8 +1200,132 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         }
     }
 
+    /// <summary>
+    /// Held by everything that touches the pointers, the buttons, the leases and the plans: every bridge method, Tick,
+    /// Render and the input thread. Those are the HUD's thread and the input thread, so one lock keeps them from running
+    /// at once; it is held for a step, never across a wait. See MoverLoop.
+    /// </summary>
+    private static readonly object InputGate = new();
+
+    /// <summary>A bridge method's body, run under InputGate. See InputGate.</summary>
+    private static T Gated<T>(Func<T> body)
+    {
+        lock (InputGate)
+            return body();
+    }
+
+    private static void Gated(Action body)
+    {
+        lock (InputGate)
+            body();
+    }
+
+    /// <summary>
+    /// **The input thread: the cursor moved, and a click's button and modifiers let up, between the HUD's frames.**
+    ///
+    /// Everything ExileInput2 does ran in Tick, which the host calls from inside its render loop, on the thread that then
+    /// presents the overlay - and the overlay waited there 150 to 650ms at a time while the game took long over its
+    /// frames (a trace of the HUD, 2026-10-12: 14 of 15 stalls over 150ms in IDXGISwapChain.Present). The cursor froze
+    /// for each and then jumped or crept. Moved from here every MoverStepMs, it carries on to its target through one.
+    ///
+    /// Only what reads nothing of the game's runs here: the journey (MousePointer.MoveAlong) and the buttons' timed
+    /// releases (Buttons.Step). The checks that read the game - the player's mouse, the window, the player's keys - and
+    /// the clicks and the start of each journey stay on the HUD's frames. Everything here catches its own exceptions, as
+    /// one escaping a thread of its own ends the whole process; and the thread is stopped on unload, before anything
+    /// else, or a reloaded plugin's old copy would go on moving the cursor.
+    /// </summary>
+    private System.Threading.Thread _mover;
+
+    private volatile bool _moverStopping;
+
+    /// <summary>The last exception the input thread caught, for Tick to log. See MoverLoop.</summary>
+    private string _moverFault;
+
+    /// <summary>How often the input thread steps, in milliseconds: well under a frame, so a journey moves smoothly.</summary>
+    private const int MoverStepMs = 1;
+
+    /// <summary>Whether the input thread is moving the cursor: switched on, and running.</summary>
+    private bool MoverRunning => Settings.RunInputTimingOnOwnThread.Value && _mover is { IsAlive: true } && !_moverStopping;
+
+    private void StartMover()
+    {
+        if (_mover != null)
+            return;
+
+        _moverStopping = false;
+        _mover = new System.Threading.Thread(MoverLoop)
+        {
+            IsBackground = true,
+            Name = "ExileInput2 input",
+            Priority = System.Threading.ThreadPriority.AboveNormal,
+        };
+        _mover.Start();
+    }
+
+    private void StopMover()
+    {
+        _moverStopping = true;
+        _mover?.Join(500);
+        _mover = null;
+    }
+
+    private void MoverLoop()
+    {
+        // A millisecond's sleep needs the system timer at a millisecond; asked for while the thread runs, and given back.
+        var fine = false;
+
+        try
+        {
+            fine = TimeBeginPeriod(1) == 0;
+        }
+        catch (Exception)
+        {
+            // Without it a sleep is the system's default tick, about 15ms - still steadier than the HUD's stalls.
+        }
+
+        try
+        {
+            while (!_moverStopping)
+            {
+                System.Threading.Thread.Sleep(MoverStepMs);
+
+                try
+                {
+                    lock (InputGate)
+                    {
+                        if (_moverStopping || !Settings.RunInputTimingOnOwnThread.Value)
+                            continue;
+
+                        Buttons.Step();
+
+                        if (_lease.Holder is { } driving && _pointers.TryGetValue(driving, out var pointer) && pointer.MovedElsewhere)
+                            pointer.MoveAlong();
+                    }
+                }
+                catch (Exception e)
+                {
+                    _moverFault = $"{e.GetType().Name}: {e.Message}";
+                }
+            }
+        }
+        finally
+        {
+            if (fine)
+                TimeEndPeriod(1);
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static extern uint TimeBeginPeriod(uint milliseconds);
+
+    [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    private static extern uint TimeEndPeriod(uint milliseconds);
+
     public override void OnUnload()
     {
+        // First, so nothing moves the cursor from a plugin being unloaded. See MoverLoop.
+        StopMover();
+
         AppDomain.CurrentDomain.ProcessExit -= LetGoOfEverything;
         AppDomain.CurrentDomain.UnhandledException -= LetGoOfEverything;
 

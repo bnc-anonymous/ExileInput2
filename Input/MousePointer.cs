@@ -789,6 +789,16 @@ internal sealed class MousePointer
     /// the key the length of the approach to register rather than making the pointer wait on the
     /// target while it confirms.
     /// </summary>
+    /// <summary>
+    /// Whether the journey is moved by something other than Step - ExileInput2's input thread - so Step only checks.
+    /// See MoveAlong.
+    /// </summary>
+    public bool MovedElsewhere { get; set; }
+
+    /// <summary>
+    /// The checks a step makes - the player taking the mouse, a move that never lands - and, unless MovedElsewhere, the
+    /// journey moved on. Called every tick by whoever owns this pointer.
+    /// </summary>
     public void Step()
     {
         if (Stopped != StopReason.None)
@@ -813,7 +823,17 @@ internal sealed class MousePointer
             return;
         }
 
-        if (_travel == null)
+        if (!MovedElsewhere)
+            MoveAlong();
+    }
+
+    /// <summary>
+    /// Moves the journey on and puts the cursor where it now is, pressing the journey's modifiers when their lead comes.
+    /// Reads nothing of the game's, so it can be called between the HUD's frames. See MovedElsewhere.
+    /// </summary>
+    public void MoveAlong()
+    {
+        if (Stopped != StopReason.None || _travel == null)
             return;
 
         // By the time stepped through, so a stall carries on rather than jumping: the most a step may move through is Most
@@ -829,7 +849,12 @@ internal sealed class MousePointer
         if (!_modifiersDown && _travel.RemainingMs <= _modifierLeadMs)
             PressModifiers();
 
-        Put(_travel.Now());
+        // Not put again where it already is: stepped every millisecond, most steps of a wait or a slow end move it by
+        // nothing, and each put is a call to Windows and an entry in the sends the player's mouse is judged against.
+        var at = _travel.Now();
+
+        if (_travel.Done || _lastPut is not { } last || Vector2.DistanceSquared(last, at) >= 0.0625f)
+            Put(at);
 
         if (_travel.Done)
             _travel = null;

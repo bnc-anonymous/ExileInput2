@@ -603,6 +603,42 @@ internal static class TravelCases
         Console.WriteLine("        why   a queue added to rather than planned again goes on as one, ctrl held through");
         Console.WriteLine();
 
+        // With the journey moved elsewhere - the input thread - a step checks and does not move, and MoveAlong moves it
+        // on with no step at all, as it does through a HUD stall. See MousePointer.MovedElsewhere.
+        var elseNow = TimeSpan.Zero;
+        var elseSends = new List<Vector2>();
+        var elsewhere = new MousePointer(null, new Random(13))
+        {
+            Cursor = () => elseSends.Count > 0 ? elseSends[^1] : new Vector2(100f, 100f), Send = q => elseSends.Add(q),
+            Clock = () => elseNow, MovedElsewhere = true,
+        };
+
+        elsewhere.PlaceAlong(new Vector2(400f, 100f), Modifier.None, 4f, 60, 60f, 6f, new Vector2(200f, 100f), new Vector2(300f, 100f));
+        elseNow += TimeSpan.FromMilliseconds(40);
+        elsewhere.Step();
+
+        var sentByStep = elseSends.Count;
+
+        for (var k = 0; k < 60; k++)
+        {
+            elseNow += TimeSpan.FromMilliseconds(5);
+            elsewhere.MoveAlong();
+        }
+
+        var elseOk = sentByStep == 0 && elseSends.Count > 10 && Vector2.Distance(elseSends[^1], new Vector2(400f, 100f)) < 0.5f &&
+                     elsewhere.Stopped == StopReason.None;
+
+        if (!elseOk)
+            failed++;
+
+        Console.WriteLine($"{(elseOk ? "  ok  " : "FAIL  ")}19 A journey moved elsewhere is moved by MoveAlong alone, not by a step");
+        Console.WriteLine("        want  no move from the step; the journey carried to its end by MoveAlong, with no step between");
+        Console.WriteLine($"        got   {sentByStep} put(s) by the step, {elseSends.Count} by MoveAlong, ending at " +
+                          $"({(elseSends.Count > 0 ? elseSends[^1].X : 0):0},{(elseSends.Count > 0 ? elseSends[^1].Y : 0):0})");
+        Console.WriteLine("        why   the HUD calls Tick from inside its render loop, which waits on the overlay's Present while the");
+        Console.WriteLine("              game is slow; a journey stepped only there froze through each stall and then jumped");
+        Console.WriteLine();
+
         Console.WriteLine($"{All.Length + 2 - failed}/{All.Length + 2} match");
         return failed;
     }

@@ -83,6 +83,15 @@ public class ExileInput2Settings : ISettings
         "mouse stops it.")]
     public RangeNode<int> ArriveTimeoutMs { get; set; } = new RangeNode<int>(1500, 100, 10000);
 
+    [Menu("Run Input Timing On Its Own Thread",
+        "Moves the cursor along its path, presses a move's modifiers on time, and lets a\n" +
+        "click's button up on time, from a thread of its own rather than once per HUD frame.\n" +
+        "When the HUD stalls - the game taking long over a frame holds the overlay back - the\n" +
+        "cursor keeps moving to its target instead of freezing and then jumping.\n\n" +
+        "Clicks, the start of each move, and a click's own modifier timing still wait for the\n" +
+        "HUD. Off does everything once per frame, as before.")]
+    public ToggleNode RunInputTimingOnOwnThread { get; set; } = new ToggleNode(true);
+
     [Menu("Most Move Time Per Frame (ms)",
         "How much of a move one frame may cover. A move is timed by the clock, so a frame\n" +
         "held up - the game or the HUD pausing - would otherwise jump the cursor along\n" +
@@ -387,6 +396,7 @@ public class ExileInput2Settings : ISettings
         StopTolerancePx.Value = defaults.StopTolerancePx.Value;
         ArriveTimeoutMs.Value = defaults.ArriveTimeoutMs.Value;
         MostMoveTimePerFrameMs.Value = defaults.MostMoveTimePerFrameMs.Value;
+        RunInputTimingOnOwnThread.Value = defaults.RunInputTimingOnOwnThread.Value;
         ClaimExpirySeconds.Value = defaults.ClaimExpirySeconds.Value;
         ClickHoldShortestMs.Value = defaults.ClickHoldShortestMs.Value;
         ClickHoldUsualMs.Value = defaults.ClickHoldUsualMs.Value;
