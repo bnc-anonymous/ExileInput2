@@ -79,6 +79,7 @@ public sealed class ExileInput2Client
 
     private Func<string, string> _stopDetail;
     private Func<string, string[]> _planEndsSaid;
+    private Func<string, long[], bool> _allowFocusUnder;
 
     private bool _looked;
 
@@ -187,6 +188,7 @@ public sealed class ExileInput2Client
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
             _planEndsSaid = b.GetMethod<Func<string, string[]>>("ExileInput2.PlanEndsSaid");
+            _allowFocusUnder = b.GetMethod<Func<string, long[], bool>>("ExileInput2.AllowFocusUnder");
         }
         catch
         {
@@ -400,6 +402,17 @@ public sealed class ExileInput2Client
     {
         Look();
         return _planEndsSaid?.Invoke(_me) ?? [];
+    }
+
+    /// <summary>
+    /// Names panels, by element address, inside which the game's input focus is not typed input for this plugin: focus
+    /// there does not stop it as GameIsTakingInput does. None clears them. For a panel with no text to type into whose
+    /// parts the game focuses anyway. False from an ExileInput2 too old to have it.
+    /// </summary>
+    public bool AllowFocusUnder(long[] roots)
+    {
+        Look();
+        return _allowFocusUnder?.Invoke(_me, roots ?? []) ?? false;
     }
 
     /// <summary>Whether the cursor has been taken away from this plugin. See <see cref="Stopped"/>.</summary>

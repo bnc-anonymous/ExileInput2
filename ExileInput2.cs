@@ -91,6 +91,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // What the last stop saw, for a caller to record; never drawn here. See MousePointer.StopDetail.
         b.SaveMethod("ExileInput2.StopDetail", (string who) => Gated(() => PointerFor(who).StopDetail));
+        // Panels a caller says take no typed input, focus inside which does not stop it. See AllowFocusUnder.
+        b.SaveMethod("ExileInput2.AllowFocusUnder", (string who, long[] roots) => Gated(() => AllowFocusUnder(who, roots)));
 
         // Aiming. A rect is what every caller has, since that is what an element reports.
         b.SaveMethod("ExileInput2.MoveTo",
@@ -220,7 +222,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (Stop(who) != StopReason.None)
             return false;
 
-        if (Blocked() is var blocked and not StopReason.None)
+        if (Blocked(who) is var blocked and not StopReason.None)
         {
             PointerFor(who).Stop(blocked, _blockedDetail);
             return false;
@@ -244,8 +246,11 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         return true;
     }
 
-    /// <summary>Whether the game is in a state where synthetic input has any business happening.</summary>
-    private StopReason Blocked()
+    /// <summary>
+    /// Whether the game is in a state where synthetic input has any business happening, for this caller: focus inside a
+    /// panel it named with AllowFocusUnder does not count as typed input.
+    /// </summary>
+    private StopReason Blocked(string who)
     {
         try
         {
@@ -254,7 +259,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
             // Chat, a stash search box, anything with a caret in it. Keys sent while one of those
             // has focus are typed into it, and a click is the player dismissing it.
-            if (GameController.IngameState.FocusedInputElement is { } focused)
+            if (GameController.IngameState.FocusedInputElement is { } focused && !FocusAllowed(who, focused))
             {
                 _blockedDetail = FocusedSaid(focused);
                 return StopReason.GameIsTakingInput;
@@ -268,6 +273,45 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         }
 
         return StopReason.None;
+    }
+
+    /// <summary>
+    /// Sets the panels, by element address, inside which focus is not typed input for this caller; none clears them. For
+    /// a panel the game focuses part of with no text to type into: the reforging bench reports the box around its reforge
+    /// button as taking typed input after each reforge, with chat closed and no caret (2026-10-12 12:33:48), and every
+    /// reforge stopped the run for a moment. Focus anywhere else still stops it.
+    /// </summary>
+    private bool AllowFocusUnder(string who, long[] roots)
+    {
+        if (roots is { Length: > 0 })
+            _focusAllowedUnder[who] = roots;
+        else
+            _focusAllowedUnder.Remove(who);
+
+        return true;
+    }
+
+    /// <summary>Each caller's panels inside which focus is not typed input. See AllowFocusUnder.</summary>
+    private readonly Dictionary<string, long[]> _focusAllowedUnder = new();
+
+    /// <summary>Whether the focused element is, or lies inside, a panel this caller named. See AllowFocusUnder.</summary>
+    private bool FocusAllowed(string who, ExileCore2.PoEMemory.Element focused)
+    {
+        if (who == null || !_focusAllowedUnder.TryGetValue(who, out var roots))
+            return false;
+
+        var at = focused;
+
+        // Bounded: the element tree is shallow, and a cycle in a read gone wrong must not hang the tick.
+        for (var depth = 0; at != null && depth < 64; depth++)
+        {
+            if (Array.IndexOf(roots, at.Address) >= 0)
+                return true;
+
+            at = at.Parent;
+        }
+
+        return false;
     }
 
     /// <summary>What Blocked last saw, for the stop's detail: the element taking typed input. See FocusedSaid.</summary>
@@ -1082,7 +1126,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
             // The window going away is as good a reason to stop as the player taking the mouse
             // back: a click sent while the game is not in front lands in whatever is.
-            if (Blocked() is var blocked and not StopReason.None)
+            if (Blocked(driving) is var blocked and not StopReason.None)
                 pointer.Stop(blocked, _blockedDetail);
 
             // A key of the player's, to a holder that asked to be stopped by keys. See StopOnPlayerKeys.
