@@ -71,6 +71,9 @@ public sealed class ExileInput2Client
     private Func<string, bool> _keyBlockCancelled;
     private Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool> _planClicks;
     private Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool> _extendPlan;
+    private Func<string, bool, bool> _clickOnArrival;
+    private Func<string, bool> _cancelClickOnArrival;
+    private Func<string, bool> _clickedOnArrival;
     private Func<string, float[]> _lastMoveTimes;
     private Func<string, string> _stopped;
 
@@ -176,6 +179,9 @@ public sealed class ExileInput2Client
             _keyBlockCancelled = b.GetMethod<Func<string, bool>>("ExileInput2.KeyBlockCancelled");
             _planClicks = b.GetMethod<Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool, bool>>("ExileInput2.PlanClicks");
             _extendPlan = b.GetMethod<Func<string, RectangleF[], Vector2[], bool[], Keys[][], int[], bool>>("ExileInput2.ExtendPlan");
+            _clickOnArrival = b.GetMethod<Func<string, bool, bool>>("ExileInput2.ClickOnArrival");
+            _cancelClickOnArrival = b.GetMethod<Func<string, bool>>("ExileInput2.CancelClickOnArrival");
+            _clickedOnArrival = b.GetMethod<Func<string, bool>>("ExileInput2.ClickedOnArrival");
             _lastMoveTimes = b.GetMethod<Func<string, float[]>>("ExileInput2.LastMoveTimes");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
@@ -496,6 +502,31 @@ public sealed class ExileInput2Client
     {
         Look();
         return _extendPlan?.Invoke(_me, rects, points, rights, modifiers, shortestMoveMs) ?? false;
+    }
+
+    /// <summary>
+    /// Arms a plain left or right click to go out the moment the cursor is put on the target of the move in hand, from
+    /// ExileInput2's own input thread rather than this caller's next frame. It stays armed through a fresh move, so
+    /// re-aiming keeps it. False without the cursor, or from an ExileInput2 too old to have it - then click as usual.
+    /// </summary>
+    public bool ClickOnArrival(bool right = false)
+    {
+        Look();
+        return _clickOnArrival?.Invoke(_me, right) ?? false;
+    }
+
+    /// <summary>Disarms the click on arrival; true when one was armed and had not gone out yet.</summary>
+    public bool CancelClickOnArrival()
+    {
+        Look();
+        return _cancelClickOnArrival?.Invoke(_me) ?? false;
+    }
+
+    /// <summary>Whether the armed click went out on arrival, read once.</summary>
+    public bool ClickedOnArrival()
+    {
+        Look();
+        return _clickedOnArrival?.Invoke(_me) ?? false;
     }
 
     /// <summary>

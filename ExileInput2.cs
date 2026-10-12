@@ -111,6 +111,11 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             (string who, RectangleF rect, Keys[] modifiers) => Gated(() => Move(who, rect, modifiers)));
         b.SaveMethod("ExileInput2.MoveToPointKeys",
             (string who, Vector2 client, Keys[] modifiers) => Gated(() => MoveTo(who, client, modifiers)));
+        // A plain click armed to go out the moment the cursor is put on its target, from the input thread, without
+        // waiting for the caller's next frame; cancelled, and whether it went out, read once. See ClickOnArrival.
+        b.SaveMethod("ExileInput2.ClickOnArrival", (string who, bool right) => Gated(() => ClickOnArrival(who, right)));
+        b.SaveMethod("ExileInput2.CancelClickOnArrival", (string who) => Gated(() => CancelClickOnArrival(who)));
+        b.SaveMethod("ExileInput2.ClickedOnArrival", (string who) => Gated(() => ClickedOnArrival(who)));
         b.SaveMethod("ExileInput2.Arrived", (string who) => Gated(() => Arrived(who)));
 
         // The caller's last move: its wait for a click's button, and its own length, in milliseconds; then its swoop's
@@ -825,6 +830,50 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     }
 
     /// <summary>
+    /// **A plain click armed to go out the moment the cursor is put on its target**, from the input thread, rather than
+    /// when the caller next asks: an instant loot pickup sent its move and then waited for its next frame to click, and a
+    /// HUD stall of 300 to 500ms after a drop held the click that long. Left or right, no modifiers. Stays armed through a
+    /// fresh move, so a caller re-aiming at a label that slid keeps the click; CancelClickOnArrival disarms it, and
+    /// letting go of the cursor does. False without the cursor.
+    ///
+    /// The click goes out on this pointer's own record of having put the cursor there - no read of the game - so a
+    /// caller wanting the game's word on what is under it has to have it before the cursor arrives.
+    /// </summary>
+    private bool ClickOnArrival(string who, bool right)
+    {
+        if (!_lease.Held(who))
+            return false;
+
+        _clicksOnArrival[who] = right;
+        _clickedOnArrival.Remove(who);
+        return true;
+    }
+
+    /// <summary>Disarms a click on arrival. True when one was armed and had not gone out. See ClickOnArrival.</summary>
+    private bool CancelClickOnArrival(string who) => who != null && _clicksOnArrival.Remove(who);
+
+    /// <summary>Whether an armed click went out on arrival, read once. See ClickOnArrival.</summary>
+    private bool ClickedOnArrival(string who) => who != null && _clickedOnArrival.Remove(who);
+
+    /// <summary>Makes the click armed for this caller once its cursor is on target and its last click's button is up.</summary>
+    private void ClickIfArrived(string who, MousePointer pointer)
+    {
+        if (!_clicksOnArrival.TryGetValue(who, out var right) || !pointer.PutOnTarget || Buttons.PressHeld)
+            return;
+
+        _clicksOnArrival.Remove(who);
+
+        if (Click(who, Modifier.None, right))
+            _clickedOnArrival.Add(who);
+    }
+
+    /// <summary>Clicks armed for arrival, by caller, and whether each went left or right. See ClickOnArrival.</summary>
+    private readonly Dictionary<string, bool> _clicksOnArrival = new();
+
+    /// <summary>Callers whose armed click went out, until they read it. See ClickedOnArrival.</summary>
+    private readonly HashSet<string> _clickedOnArrival = new();
+
+    /// <summary>
     /// Tells the pointer a click went out, and passes the answer straight through.
     ///
     /// So that aiming at the same place again is understood as doing the thing twice rather than as
@@ -946,6 +995,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         ForgetKeyStop(who);
         FadePlan(who);
+        _clicksOnArrival.Remove(who);
         _lease.Release(who);
         return true;
     }
@@ -1017,6 +1067,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
                 // And the drag, which is a press with a journey inside it. See Drag.
                 StepDrag(driving, pointer);
+
+                // A click armed for arrival, when the input thread is not there to make it. See ClickOnArrival.
+                ClickIfArrived(driving, pointer);
             }
         }
 
@@ -1036,6 +1089,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             FadePlan(_held);
             MouseBlock.Stop();
             ForgetKeyStop(_held);
+            _clicksOnArrival.Remove(_held);
             _held = null;
         }
         else if (_lease.Holder != null)
@@ -1061,6 +1115,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();
         ForgetKeyStop(who);
+        _clicksOnArrival.Remove(who);
         _lease.Release(who);
         _held = null;
     }
@@ -1299,7 +1354,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                         Buttons.Step();
 
                         if (_lease.Holder is { } driving && _pointers.TryGetValue(driving, out var pointer) && pointer.MovedElsewhere)
+                        {
                             pointer.MoveAlong();
+                            ClickIfArrived(driving, pointer);
+                        }
                     }
                 }
                 catch (Exception e)

@@ -790,6 +790,14 @@ internal sealed class MousePointer
     /// target while it confirms.
     /// </summary>
     /// <summary>
+    /// Whether the journey is over with the cursor put on the point it was sent to, by this pointer's own record - no read
+    /// of the game, so it can be asked between the HUD's frames. Not Arrived, which for an unplanned move waits for the
+    /// game to report the cursor there. See ExileInput2's click on arrival.
+    /// </summary>
+    public bool PutOnTarget => Stopped == StopReason.None && _travel == null && _lastPut is { } put &&
+                               Vector2.DistanceSquared(put, Expected) < 0.25f;
+
+    /// <summary>
     /// Whether the journey is moved by something other than Step - ExileInput2's input thread - so Step only checks.
     /// See MoveAlong.
     /// </summary>

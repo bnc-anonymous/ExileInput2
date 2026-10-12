@@ -639,6 +639,38 @@ internal static class TravelCases
         Console.WriteLine("              game is slow; a journey stepped only there froze through each stall and then jumped");
         Console.WriteLine();
 
+        // PutOnTarget, which a click on arrival waits for, is false while the journey runs and true once it has put the
+        // cursor on its point - with no report from the game at all. See MousePointer.PutOnTarget.
+        var onNow = TimeSpan.Zero;
+        var onTarget = new MousePointer(null, new Random(17))
+        {
+            Cursor = () => new Vector2(100f, 100f), Send = _ => { }, Clock = () => onNow, MovedElsewhere = true,
+        };
+
+        onTarget.Place(new Vector2(300f, 200f), Modifier.None);
+        var beforeOn = onTarget.PutOnTarget;
+        var midwayOn = false;
+
+        for (var k = 0; k < 200 && !onTarget.PutOnTarget; k++)
+        {
+            onNow += TimeSpan.FromMilliseconds(2);
+            onTarget.MoveAlong();
+
+            if (k == 5)
+                midwayOn = onTarget.PutOnTarget;
+        }
+
+        var onOk = !beforeOn && !midwayOn && onTarget.PutOnTarget;
+
+        if (!onOk)
+            failed++;
+
+        Console.WriteLine($"{(onOk ? "  ok  " : "FAIL  ")}20 A pointer is on target only once its journey has put the cursor there");
+        Console.WriteLine("        want  false before and part way, true at the end, with the game's report never moving");
+        Console.WriteLine($"        got   before {beforeOn}, part way {midwayOn}, at the end {onTarget.PutOnTarget}");
+        Console.WriteLine("        why   a click armed for arrival goes out from the input thread, which cannot read the game");
+        Console.WriteLine();
+
         Console.WriteLine($"{All.Length + 2 - failed}/{All.Length + 2} match");
         return failed;
     }
