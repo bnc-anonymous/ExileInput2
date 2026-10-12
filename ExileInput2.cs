@@ -1313,8 +1313,19 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                 _fading.Add((replaced, DateTime.UtcNow, true));
         }
 
+        // **Modifiers already down for the first click are drawn as carried, not pressed again**: a loiter holding ctrl
+        // for the ctrl+click it waits on, or the last click still holding the same ones. Planned as fresh, the first click
+        // was drawn with ctrl going down at the reforging bench's slot, where the move takes the held ctrl over. See
+        // EndLoiterKeys and CarryModifiers.
+        var first = modifiers is { Length: > 0 } && modifiers[0] is { Length: > 0 } wanted ? wanted : null;
+        var alreadyDown = first == null ? null
+            : _loiterKeys.TryGetValue(who, out var loitering) && loitering.Length == first.Length && loitering.All(k => Array.IndexOf(first, k) >= 0)
+                ? first
+                : StrokeFor(who).HoldingAfterClick(first) ? first : null;
+
         _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), rects, points, rights ?? [], modifiers ?? [], show,
-            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming), ShortestOf(shortestMoveMs));
+            () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming), ShortestOf(shortestMoveMs),
+            modifiersBefore: alreadyDown);
 
         return true;
     }
