@@ -121,12 +121,19 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.ClickedOnArrival", (string who) => Gated(() => ClickedOnArrival(who)));
         b.SaveMethod("ExileInput2.Arrived", (string who) => Gated(() => Arrived(who)));
         // The cursor taken to a point and kept moving round it until the next move. See MousePointer.Loiter.
-        b.SaveMethod("ExileInput2.Loiter", (string who, Vector2 centre, float radius, int forMs) => Gated(() =>
+        b.SaveMethod("ExileInput2.Loiter", (string who, Vector2 centre, float radius, int forMs, Keys[] modifiers) => Gated(() =>
         {
             if (!_lease.Held(who))
                 return false;
 
-            PointerFor(who).Loiter(centre, radius, forMs);
+            // Any held from a loiter before, let go unless these are the same. See _loiterKeys.
+            EndLoiterKeys(who, modifiers ?? Modifier.None);
+
+            PointerFor(who).Loiter(centre, radius, forMs, modifiers);
+
+            if (Modifier.Any(modifiers))
+                _loiterKeys[who] = modifiers;
+
             return true;
         }));
         b.SaveMethod("ExileInput2.StopLoitering", (string who) => Gated(() =>
@@ -329,6 +336,30 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         return false;
     }
 
+    /// <summary>
+    /// The modifiers each caller's loiter holds down for the click it waits on. Taken over by the next move asking for the
+    /// same ones, as a click's are; let go by a move asking for others, by the loiter ending on its own - its time up, or
+    /// StopLoitering - and, as every held key is, by the cursor being given up or the caller stopped. See EndLoiterKeys.
+    /// </summary>
+    private readonly Dictionary<string, Keys[]> _loiterKeys = new();
+
+    /// <summary>
+    /// Ends what a loiter holds as the next thing asks for these modifiers: true when they are the same, and still down
+    /// for that move to keep; else they are let go and false. False with nothing held.
+    /// </summary>
+    private bool EndLoiterKeys(string who, Keys[] next)
+    {
+        if (who == null || !_loiterKeys.Remove(who, out var held))
+            return false;
+
+        if (held.Length == next.Length && held.All(k => Array.IndexOf(next, k) >= 0))
+            return true;
+
+        KeysFor(who).ReleaseAll();
+        PointerFor(who).ModifiersLetGo();
+        return false;
+    }
+
     /// <summary>What Blocked last saw, for the stop's detail: the element taking typed input. See FocusedSaid.</summary>
     private string _blockedDetail = "";
 
@@ -420,7 +451,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             return false;
 
         var pointer = PointerFor(who);
-        var carried = CarryModifiers(who, modifiers);
+        var carried = EndLoiterKeys(who, modifiers ?? Modifier.None) | CarryModifiers(who, modifiers);
 
         // The queue's next click, where it was planned by its rectangle: the point, journey and lead planned for it. Any
         // other rectangle drops the queue.
@@ -664,7 +695,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (!_lease.Held(who))
             return false;
 
-        var carried = CarryModifiers(who, modifiers);
+        var carried = EndLoiterKeys(who, modifiers ?? Modifier.None) | CarryModifiers(who, modifiers);
         var pointer = PointerFor(who);
 
         // The queue's next point: the journey and lead drawn when it was planned, so the move made is the one drawn.
@@ -1101,6 +1132,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         ForgetKeyStop(who);
         FadePlan(who, "the caller handed the cursor back");
         _clicksOnArrival.Remove(who);
+        _loiterKeys.Remove(who);
         _lease.Release(who);
         return true;
     }
@@ -1143,6 +1175,10 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             // back: a click sent while the game is not in front lands in whatever is.
             if (Blocked(driving) is var blocked and not StopReason.None)
                 pointer.Stop(blocked, _blockedDetail);
+
+            // A loiter that ended on its own - its time up, or stopped - lets go of what it held. See _loiterKeys.
+            if (_loiterKeys.ContainsKey(driving) && !pointer.Loitering)
+                EndLoiterKeys(driving, Modifier.None);
 
             // A key of the player's, to a holder that asked to be stopped by keys. See StopOnPlayerKeys.
             if (_keyStops.TryGetValue(driving, out var except))
@@ -1195,6 +1231,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             MouseBlock.Stop();
             ForgetKeyStop(_held);
             _clicksOnArrival.Remove(_held);
+            _loiterKeys.Remove(_held);
             _held = null;
         }
         else if (_lease.Holder != null)
@@ -1216,6 +1253,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         KeysFor(who).ReleaseAll();
         Buttons.Release();
         _drags.Remove(who);
+        _loiterKeys.Remove(who);
         FadePlan(who, $"stopped ({reason})");
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();

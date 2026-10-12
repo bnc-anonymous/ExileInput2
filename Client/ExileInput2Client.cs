@@ -80,7 +80,7 @@ public sealed class ExileInput2Client
     private Func<string, string> _stopDetail;
     private Func<string, string[]> _planEndsSaid;
     private Func<string, long[], bool> _allowFocusUnder;
-    private Func<string, Vector2, float, int, bool> _loiter;
+    private Func<string, Vector2, float, int, Keys[], bool> _loiter;
     private Func<string, bool> _stopLoitering;
     private Func<string, bool> _loitering;
 
@@ -192,7 +192,7 @@ public sealed class ExileInput2Client
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
             _planEndsSaid = b.GetMethod<Func<string, string[]>>("ExileInput2.PlanEndsSaid");
             _allowFocusUnder = b.GetMethod<Func<string, long[], bool>>("ExileInput2.AllowFocusUnder");
-            _loiter = b.GetMethod<Func<string, Vector2, float, int, bool>>("ExileInput2.Loiter");
+            _loiter = b.GetMethod<Func<string, Vector2, float, int, Keys[], bool>>("ExileInput2.Loiter");
             _stopLoitering = b.GetMethod<Func<string, bool>>("ExileInput2.StopLoitering");
             _loitering = b.GetMethod<Func<string, bool>>("ExileInput2.Loitering");
         }
@@ -426,19 +426,22 @@ public sealed class ExileInput2Client
     /// wander, about radius across - for forMs, or with none until something ends it: the next move, StopLoitering, a
     /// stop, or Release. For waiting on the game with nothing to click yet. False without the cursor, or from an
     /// ExileInput2 too old to have it.
+    ///
+    /// hold: modifiers to press on the way and keep down for the click being waited on - ctrl for a ctrl+click - which
+    /// the next move asking for the same ones takes over. Ended any other way, they are let go.
     /// </summary>
-    public bool Loiter(Vector2 centre, float radius, int forMs = 0)
+    public bool Loiter(Vector2 centre, float radius, int forMs = 0, Keys[] hold = null)
     {
         Look();
-        return _loiter?.Invoke(_me, centre, radius, forMs) ?? false;
+        return _loiter?.Invoke(_me, centre, radius, forMs, hold ?? []) ?? false;
     }
 
     /// <summary>
     /// Loiter over an area: round its middle, about share of its smaller side across. For idling over something about to
     /// appear or be ready - a slot, a button - with no click to make yet.
     /// </summary>
-    public bool Loiter(RectangleF area, float share = 0.3f, int forMs = 0) =>
-        Loiter(new Vector2(area.X + area.Width / 2f, area.Y + area.Height / 2f), Math.Min(area.Width, area.Height) * share, forMs);
+    public bool Loiter(RectangleF area, float share = 0.3f, int forMs = 0, Keys[] hold = null) =>
+        Loiter(new Vector2(area.X + area.Width / 2f, area.Y + area.Height / 2f), Math.Min(area.Width, area.Height) * share, forMs, hold);
 
     /// <summary>Ends a loiter now, the cursor left where it has got to. See Loiter.</summary>
     public bool StopLoitering()

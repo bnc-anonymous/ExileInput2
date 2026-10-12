@@ -1050,10 +1050,13 @@ internal sealed class MousePointer
     ///
     /// Ends after forMs, with the cursor left where it has got to, or with none until something ends it: the next move
     /// asked for, StopLoitering, a stop, or the cursor given up.
+    ///
+    /// The modifiers given go down on the way to the point, as a move's do, and stay down through the loiter for the
+    /// click it waits on. Letting them go when it ends any other way is ExileInput2's. See ExileInput2's _loiterKeys.
     /// </summary>
-    public void Loiter(Vector2 centre, float radius, int forMs = 0)
+    public void Loiter(Vector2 centre, float radius, int forMs = 0, Keys[] modifiers = null)
     {
-        Place(centre);
+        Place(centre, modifiers ?? []);
 
         var shape = (LoiterShape)_rng.Next(3);
 
