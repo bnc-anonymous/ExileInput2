@@ -78,6 +78,7 @@ public sealed class ExileInput2Client
     private Func<string, string> _stopped;
 
     private Func<string, string> _stopDetail;
+    private Func<string, string[]> _planEndsSaid;
 
     private bool _looked;
 
@@ -185,6 +186,7 @@ public sealed class ExileInput2Client
             _lastMoveTimes = b.GetMethod<Func<string, float[]>>("ExileInput2.LastMoveTimes");
             _stopped = b.GetMethod<Func<string, string>>("ExileInput2.Stopped");
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
+            _planEndsSaid = b.GetMethod<Func<string, string[]>>("ExileInput2.PlanEndsSaid");
         }
         catch
         {
@@ -387,6 +389,17 @@ public sealed class ExileInput2Client
     {
         Look();
         return _stopDetail?.Invoke(_me) ?? "";
+    }
+
+    /// <summary>
+    /// How this plugin's planned queues of clicks ended, newest last, one line each: replaced, dropped by a move elsewhere,
+    /// used up, or faded out as the cursor was given up, with how far through each was. Empty from an ExileInput2 too old
+    /// to say. See PlanClicks.
+    /// </summary>
+    public string[] PlanEndsSaid()
+    {
+        Look();
+        return _planEndsSaid?.Invoke(_me) ?? [];
     }
 
     /// <summary>Whether the cursor has been taken away from this plugin. See <see cref="Stopped"/>.</summary>

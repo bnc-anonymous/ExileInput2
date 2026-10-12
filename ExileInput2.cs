@@ -1,6 +1,7 @@
 using ExileCore2;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 using RectangleF = ExileCore2.Shared.RectangleF;
 using Vector2 = System.Numerics.Vector2;
@@ -126,6 +127,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                 (float)PointerFor(who).LastMoveDelayMs, PointerFor(who).LastMoveTravelMs, PointerFor(who).LastMoveShape.DurationScale,
                 PointerFor(who).LastMoveShape.Overshoot.Length(),
             }));
+
+        // How a caller's planned queues ended, newest last, for its dump. See PlanEndsSaid.
+        b.SaveMethod("ExileInput2.PlanEndsSaid", (string who) => Gated(() => PlanEndsSaid(who)));
 
         // A queue of clicks asked for ahead of time, drawn on screen when show is set. Empty points drop it. See PlanClicks.
         b.SaveMethod("ExileInput2.PlanClicks",
@@ -351,7 +355,14 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             return true;
         }
 
-        _plans.Remove(who);
+        if (_plans.Remove(who, out var dropped))
+            NotePlanEnd(who, dropped, dropped.Next < dropped.Items.Count
+                ? $"dropped: a move to the rectangle ({rect.X:0},{rect.Y:0} {rect.Width:0}x{rect.Height:0}) where the next planned " +
+                  (dropped.Items[dropped.Next].PointGiven
+                      ? $"was the point ({dropped.Items[dropped.Next].To.X:0},{dropped.Items[dropped.Next].To.Y:0})"
+                      : $"was ({dropped.Items[dropped.Next].Rect.X:0},{dropped.Items[dropped.Next].Rect.Y:0} " +
+                        $"{dropped.Items[dropped.Next].Rect.Width:0}x{dropped.Items[dropped.Next].Rect.Height:0})")
+                : "used up: a move after its last click");
 
         pointer.Aim(rect, modifiers ?? Modifier.None);
 
@@ -585,7 +596,15 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         }
         else
         {
-            _plans.Remove(who);
+            if (_plans.Remove(who, out var dropped))
+                NotePlanEnd(who, dropped, dropped.Next < dropped.Items.Count
+                    ? $"dropped: a move to the point ({client.X:0},{client.Y:0}) where the next planned " +
+                      (dropped.Items[dropped.Next].PointGiven
+                          ? $"was ({dropped.Items[dropped.Next].To.X:0},{dropped.Items[dropped.Next].To.Y:0})"
+                          : $"was the rectangle ({dropped.Items[dropped.Next].Rect.X:0},{dropped.Items[dropped.Next].Rect.Y:0} " +
+                            $"{dropped.Items[dropped.Next].Rect.Width:0}x{dropped.Items[dropped.Next].Rect.Height:0})")
+                    : "used up: a move after its last click");
+
             pointer.Place(client, modifiers ?? Modifier.None);
         }
 
@@ -994,7 +1013,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             MouseBlock.Stop();
 
         ForgetKeyStop(who);
-        FadePlan(who);
+        FadePlan(who, "the caller handed the cursor back");
         _clicksOnArrival.Remove(who);
         _lease.Release(who);
         return true;
@@ -1086,7 +1105,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
             KeysFor(_held).ReleaseAll();
             Buttons.Release();
             _drags.Remove(_held);
-            FadePlan(_held);
+            FadePlan(_held, "the caller's claim on the cursor lapsed");
             MouseBlock.Stop();
             ForgetKeyStop(_held);
             _clicksOnArrival.Remove(_held);
@@ -1111,7 +1130,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         KeysFor(who).ReleaseAll();
         Buttons.Release();
         _drags.Remove(who);
-        FadePlan(who);
+        FadePlan(who, $"stopped ({reason})");
         PointerFor(who).IgnorePlayerFor(0);
         MouseBlock.Stop();
         ForgetKeyStop(who);
@@ -1155,13 +1174,20 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         if (rects.Length == 0 && points.Length == 0)
         {
-            _plans.Remove(who);
+            if (_plans.Remove(who, out var emptied))
+                NotePlanEnd(who, emptied, "dropped by the caller");
+
             return true;
         }
 
         // A queue replaced: its clicks already made go on fading out, the rest give way to the new one. See ClickPlan.Draw.
-        if (_plans.TryGetValue(who, out var replaced) && replaced.Show)
-            _fading.Add((replaced, DateTime.UtcNow, true));
+        if (_plans.TryGetValue(who, out var replaced))
+        {
+            NotePlanEnd(who, replaced, $"replaced by a new plan of {Math.Max(rects.Length, points.Length)}");
+
+            if (replaced.Show)
+                _fading.Add((replaced, DateTime.UtcNow, true));
+        }
 
         _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), rects, points, rights ?? [], modifiers ?? [], show,
             () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming), ShortestOf(shortestMoveMs));
@@ -1208,11 +1234,37 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// Takes a caller's queue away when it gives up the cursor or is stopped - the player moving the mouse, the action
     /// key ending a run - and lets what was left of it fade out over FadeFor rather than vanish. See Render.
     /// </summary>
-    private void FadePlan(string who)
+    private void FadePlan(string who, string why)
     {
-        if (who != null && _plans.Remove(who, out var plan) && plan.Show)
+        if (who == null || !_plans.Remove(who, out var plan))
+            return;
+
+        NotePlanEnd(who, plan, $"faded out: {why}");
+
+        if (plan.Show)
             _fading.Add((plan, DateTime.UtcNow, false));
     }
+
+    /// <summary>
+    /// Keeps how a caller's queue ended - replaced, dropped by a move elsewhere, used up, or faded out as the caller gave
+    /// up the cursor - with how far through it was, for the caller's dump. The last PlanEndsKept. See PlanEndsSaid.
+    /// </summary>
+    private void NotePlanEnd(string who, ClickPlan plan, string how)
+    {
+        _planEnds.Add((who, $"{DateTime.Now:HH:mm:ss.fff} {how}; {plan.Next} of {plan.Items.Count} moved to" +
+                            (plan.Current != null ? ", the last not yet clicked" : "")));
+
+        if (_planEnds.Count > PlanEndsKept)
+            _planEnds.RemoveAt(0);
+    }
+
+    /// <summary>How a caller's queues ended, newest last. See NotePlanEnd.</summary>
+    private string[] PlanEndsSaid(string who) => _planEnds.Where(e => e.Who == who).Select(e => e.Said).ToArray();
+
+    private readonly List<(string Who, string Said)> _planEnds = new();
+
+    /// <summary>How many plan endings are kept, for every caller together. Chosen.</summary>
+    private const int PlanEndsKept = 60;
 
     /// <summary>Queues given up, fading, with when. See FadePlan.</summary>
     private readonly List<(ClickPlan Plan, DateTime Since, bool DoneOnly)> _fading = new();
