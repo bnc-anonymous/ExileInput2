@@ -1043,12 +1043,15 @@ internal sealed class MousePointer
     }
 
     /// <summary>
-    /// Takes the cursor to a point and keeps it moving round it, idle, until the next move is asked for: a circle, a figure
-    /// of eight or a wander, drawn at random, about radius across, each loop LoiterLoopMs or so, starting from the point
-    /// and easing in. For a caller waiting on the game with nothing to click yet - the reforging bench working on the
-    /// tablet that will appear there. Every point goes through Put, so the player's own mouse is still told apart from it.
+    /// Takes the cursor to a point and keeps it moving round it, idle: a circle, a figure of eight or a wander, drawn at
+    /// random, about radius across, each loop LoiterLoopMs or so, starting from the point and easing in. For a caller
+    /// waiting on the game with nothing to click yet - the reforging bench working on the tablet that will appear there.
+    /// Every point goes through Put, so the player's own mouse is still told apart from it.
+    ///
+    /// Ends after forMs, with the cursor left where it has got to, or with none until something ends it: the next move
+    /// asked for, StopLoitering, a stop, or the cursor given up.
     /// </summary>
-    public void Loiter(Vector2 centre, float radius)
+    public void Loiter(Vector2 centre, float radius, int forMs = 0)
     {
         Place(centre);
 
@@ -1056,8 +1059,15 @@ internal sealed class MousePointer
 
         _loiter = new LoiterState(centre, Math.Max(2f, radius * (0.7f + 0.6f * (float)_rng.NextDouble())), shape,
             LoiterLoopMs * (0.75f + 0.5f * (float)_rng.NextDouble()), (float)(_rng.NextDouble() * Math.PI * 2),
-            _rng.NextDouble() < 0.5 ? -1f : 1f, (float)_rng.NextDouble() * 100f, null);
+            _rng.NextDouble() < 0.5 ? -1f : 1f, (float)_rng.NextDouble() * 100f, null,
+            forMs > 0 ? Now() + TimeSpan.FromMilliseconds(forMs) : null);
     }
+
+    /// <summary>Whether a loiter is going: asked for and not yet ended. See Loiter.</summary>
+    public bool Loitering => _loiter != null;
+
+    /// <summary>Ends a loiter, the cursor left where it has got to. Nothing when none is going. See Loiter.</summary>
+    public void StopLoitering() => _loiter = null;
 
     /// <summary>The shapes Loiter traces.</summary>
     private enum LoiterShape
@@ -1069,7 +1079,7 @@ internal sealed class MousePointer
 
     /// <summary>A loiter in hand: where, how big, which shape, how long a loop, turned how far and which way, and since when.</summary>
     private sealed record LoiterState(Vector2 Centre, float Radius, LoiterShape Shape, float LoopMs, float Angle, float Turn,
-        float Seed, TimeSpan? Since);
+        float Seed, TimeSpan? Since, TimeSpan? Ends);
 
     private LoiterState _loiter;
 
@@ -1089,6 +1099,12 @@ internal sealed class MousePointer
             return;
 
         var now = Now();
+
+        if (loiter.Ends is { } ends && now >= ends)
+        {
+            _loiter = null;
+            return;
+        }
 
         if (loiter.Since is not { } since)
         {

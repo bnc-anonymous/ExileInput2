@@ -121,14 +121,20 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.ClickedOnArrival", (string who) => Gated(() => ClickedOnArrival(who)));
         b.SaveMethod("ExileInput2.Arrived", (string who) => Gated(() => Arrived(who)));
         // The cursor taken to a point and kept moving round it until the next move. See MousePointer.Loiter.
-        b.SaveMethod("ExileInput2.Loiter", (string who, Vector2 centre, float radius) => Gated(() =>
+        b.SaveMethod("ExileInput2.Loiter", (string who, Vector2 centre, float radius, int forMs) => Gated(() =>
         {
             if (!_lease.Held(who))
                 return false;
 
-            PointerFor(who).Loiter(centre, radius);
+            PointerFor(who).Loiter(centre, radius, forMs);
             return true;
         }));
+        b.SaveMethod("ExileInput2.StopLoitering", (string who) => Gated(() =>
+        {
+            PointerFor(who).StopLoitering();
+            return true;
+        }));
+        b.SaveMethod("ExileInput2.Loitering", (string who) => Gated(() => PointerFor(who).Loitering));
 
         // The caller's last move: its wait for a click's button, and its own length, in milliseconds; then its swoop's
         // stretch of time (1 for none) and how far it overshot, in pixels (0 for none). See MousePointer.
