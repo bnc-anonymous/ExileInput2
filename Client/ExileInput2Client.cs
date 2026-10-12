@@ -80,6 +80,7 @@ public sealed class ExileInput2Client
     private Func<string, string> _stopDetail;
     private Func<string, string[]> _planEndsSaid;
     private Func<string, long[], bool> _allowFocusUnder;
+    private Func<string, Vector2, float, bool> _loiter;
 
     private bool _looked;
 
@@ -189,6 +190,7 @@ public sealed class ExileInput2Client
             _stopDetail = b.GetMethod<Func<string, string>>("ExileInput2.StopDetail");
             _planEndsSaid = b.GetMethod<Func<string, string[]>>("ExileInput2.PlanEndsSaid");
             _allowFocusUnder = b.GetMethod<Func<string, long[], bool>>("ExileInput2.AllowFocusUnder");
+            _loiter = b.GetMethod<Func<string, Vector2, float, bool>>("ExileInput2.Loiter");
         }
         catch
         {
@@ -414,6 +416,24 @@ public sealed class ExileInput2Client
         Look();
         return _allowFocusUnder?.Invoke(_me, roots ?? []) ?? false;
     }
+
+    /// <summary>
+    /// Takes the cursor to a client-space point and keeps it moving idly round it - a circle, a figure of eight or a
+    /// wander, about radius across - until the next move is asked for. For waiting on the game with nothing to click yet.
+    /// False without the cursor, or from an ExileInput2 too old to have it.
+    /// </summary>
+    public bool Loiter(Vector2 centre, float radius)
+    {
+        Look();
+        return _loiter?.Invoke(_me, centre, radius) ?? false;
+    }
+
+    /// <summary>
+    /// Loiter over an area: round its middle, about share of its smaller side across. For idling over something about to
+    /// appear or be ready - a slot, a button - with no click to make yet.
+    /// </summary>
+    public bool Loiter(RectangleF area, float share = 0.3f) =>
+        Loiter(new Vector2(area.X + area.Width / 2f, area.Y + area.Height / 2f), Math.Min(area.Width, area.Height) * share);
 
     /// <summary>Whether the cursor has been taken away from this plugin. See <see cref="Stopped"/>.</summary>
     public bool WasStopped() => !string.IsNullOrEmpty(Stopped());

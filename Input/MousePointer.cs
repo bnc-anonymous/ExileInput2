@@ -640,6 +640,7 @@ internal sealed class MousePointer
         {
             _stayedAt = rect;
             _planned = false;
+            _loiter = null;
 
             Expected = here;
             Awaiting = true;
@@ -735,6 +736,9 @@ internal sealed class MousePointer
     {
         var shortest = minMs ?? MinTravelMs;
         var perRootPx = msPerRootPx ?? TravelMsPerRootPx;
+
+        // A move asked for ends any loitering. See Loiter.
+        _loiter = null;
 
         // A planned journey - drift and timing given - counts as arrived once it has put the cursor on its point. See
         // Arrived.
@@ -862,8 +866,15 @@ internal sealed class MousePointer
     /// </summary>
     public void MoveAlong()
     {
-        if (Stopped != StopReason.None || _travel == null)
+        if (Stopped != StopReason.None)
             return;
+
+        // No journey: a loiter, if one is in hand, goes on. See Loiter.
+        if (_travel == null)
+        {
+            LoiterAlong();
+            return;
+        }
 
         // By the time stepped through, so a stall carries on rather than jumping: the most a step may move through is Most
         // Move Time Per Frame, the same every step - drawn afresh, 80 to 100% of a 25ms cap, ordinary frames over it moved
@@ -1027,7 +1038,87 @@ internal sealed class MousePointer
     {
         Awaiting = false;
         _travel = null;
+        _loiter = null;
         _modifiersDown = false;
+    }
+
+    /// <summary>
+    /// Takes the cursor to a point and keeps it moving round it, idle, until the next move is asked for: a circle, a figure
+    /// of eight or a wander, drawn at random, about radius across, each loop LoiterLoopMs or so, starting from the point
+    /// and easing in. For a caller waiting on the game with nothing to click yet - the reforging bench working on the
+    /// tablet that will appear there. Every point goes through Put, so the player's own mouse is still told apart from it.
+    /// </summary>
+    public void Loiter(Vector2 centre, float radius)
+    {
+        Place(centre);
+
+        var shape = (LoiterShape)_rng.Next(3);
+
+        _loiter = new LoiterState(centre, Math.Max(2f, radius * (0.7f + 0.6f * (float)_rng.NextDouble())), shape,
+            LoiterLoopMs * (0.75f + 0.5f * (float)_rng.NextDouble()), (float)(_rng.NextDouble() * Math.PI * 2),
+            _rng.NextDouble() < 0.5 ? -1f : 1f, (float)_rng.NextDouble() * 100f, null);
+    }
+
+    /// <summary>The shapes Loiter traces.</summary>
+    private enum LoiterShape
+    {
+        Circle,
+        FigureOfEight,
+        Wander,
+    }
+
+    /// <summary>A loiter in hand: where, how big, which shape, how long a loop, turned how far and which way, and since when.</summary>
+    private sealed record LoiterState(Vector2 Centre, float Radius, LoiterShape Shape, float LoopMs, float Angle, float Turn,
+        float Seed, TimeSpan? Since);
+
+    private LoiterState _loiter;
+
+    /// <summary>About how long one loop of a loiter takes, in milliseconds. Chosen.</summary>
+    private const float LoiterLoopMs = 1400f;
+
+    /// <summary>How long a loiter takes to grow to its full size from the point, in milliseconds. Chosen.</summary>
+    private const float LoiterEaseMs = 500f;
+
+    /// <summary>
+    /// Puts the cursor where the loiter has got to, once the way to its point is over: the shape's place at this moment,
+    /// nought at its start so it sets off from the point, grown in over LoiterEaseMs. See Loiter.
+    /// </summary>
+    private void LoiterAlong()
+    {
+        if (_loiter is not { } loiter)
+            return;
+
+        var now = Now();
+
+        if (loiter.Since is not { } since)
+        {
+            // Arrived at the point, by this pointer's own put: nothing for the caller to confirm, and no move to expire.
+            _loiter = loiter with { Since = now };
+            Awaiting = false;
+            return;
+        }
+
+        var ms = (float)(now - since).TotalMilliseconds;
+        var t = ms / loiter.LoopMs * MathF.PI * 2f * loiter.Turn;
+        var grown = Math.Clamp(ms / LoiterEaseMs, 0f, 1f);
+
+        grown = grown * grown * (3f - 2f * grown);
+
+        var offset = loiter.Shape switch
+        {
+            LoiterShape.Circle => new Vector2(MathF.Cos(t) - 1f, MathF.Sin(t)) * 0.5f,
+            LoiterShape.FigureOfEight => new Vector2(MathF.Sin(t), MathF.Sin(t) * MathF.Cos(t)),
+            _ => new Vector2(
+                PerlinNoise.Full(loiter.Seed, ms / loiter.LoopMs * 2f) - PerlinNoise.Full(loiter.Seed, 0f),
+                PerlinNoise.Full(loiter.Seed + 37f, ms / loiter.LoopMs * 2f) - PerlinNoise.Full(loiter.Seed + 37f, 0f)) * 0.6f,
+        };
+
+        var (sin, cos) = MathF.SinCos(loiter.Angle);
+        var turned = new Vector2(offset.X * cos - offset.Y * sin, offset.X * sin + offset.Y * cos);
+        var at = loiter.Centre + turned * loiter.Radius * grown;
+
+        if (_lastPut is not { } last || Vector2.DistanceSquared(last, at) >= 0.0625f)
+            Put(at);
     }
 
     /// <summary>
