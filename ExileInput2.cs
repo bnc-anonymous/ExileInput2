@@ -37,6 +37,13 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// <summary>The seed the noise is shuffled by now. See Tick.</summary>
     private int _seedInUse;
 
+    /// <summary>
+    /// The version of what this plugin puts on the bridge, as ExileInput2.Version answers it: raised whenever a method is
+    /// added or changes shape, so a consumer can tell an install too old for it from one that is missing. An install
+    /// from before the version existed registers no ExileInput2.Version at all, which a consumer reads as 0.
+    /// </summary>
+    public const int BridgeVersion = 1;
+
     public override bool Initialise()
     {
         // The last resort, for the ways out that never reach OnUnload.
@@ -74,6 +81,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         var b = GameController.PluginBridge;
 
         StartMover();
+
+        // Which methods a consumer can count on. See BridgeVersion.
+        b.SaveMethod("ExileInput2.Version", () => BridgeVersion);
 
         // Claiming. Take is safe to call every tick rather than once, so a caller need not keep a
         // flag about whether it already holds the cursor.

@@ -109,6 +109,26 @@ public sealed class ExileInput2Client
     }
 
     /// <summary>
+    /// The running ExileInput2's bridge version, as ExileInput2.Version answers it: 0 for an install from before the
+    /// version existed, and -1 when none is running (see Available). Looked up afresh, as the two plugins load and reload
+    /// independently. Compare it against the version a consumer needs to tell a player to update.
+    /// </summary>
+    public int Version()
+    {
+        if (!Available)
+            return -1;
+
+        try
+        {
+            return _gc?.PluginBridge?.GetMethod<Func<int>>("ExileInput2.Version")?.Invoke() ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
     /// Finds the bridge methods, once.
     ///
     /// Once rather than per call, and lazily rather than in a constructor: plugins initialise in an
