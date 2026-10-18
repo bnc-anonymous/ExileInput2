@@ -480,8 +480,8 @@ public sealed class ExileInput2Client
     }
 
     /// <summary>
-    /// When the last click's button went down, as Environment.TickCount64, whichever caller sent it; 0 before any click,
-    /// or from an ExileInput2 too old to say. A click armed with ClickOnArrival goes down on ExileInput2's own thread,
+    /// When the last click's button went down, as System.Diagnostics.Stopwatch.GetTimestamp - read the time since with
+    /// Stopwatch.GetElapsedTime - whichever caller sent it; 0 before any click, or from an ExileInput2 too old to say. A click armed with ClickOnArrival goes down on ExileInput2's own thread,
     /// before this caller's next frame. Needs nothing held.
     /// </summary>
     public long LastPressDownAt()

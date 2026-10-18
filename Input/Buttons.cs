@@ -225,14 +225,15 @@ internal static class Buttons
             Input.LeftDown();
 
         _pressRight = right;
-        LastPressDownAt = Environment.TickCount64;
-        _pressUpAt = LastPressDownAt + Math.Max(0, holdMs);
+        LastPressDownAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        _pressUpAt = Environment.TickCount64 + Math.Max(0, holdMs);
     }
 
     /// <summary>
-    /// When the last click's button went down, as Environment.TickCount64; 0 before any. For a caller timing what the game
-    /// does after its click from the moment the game was sent it, rather than from its own next frame. See
-    /// ExileInput2.LastPressDownAt.
+    /// When the last click's button went down, as System.Diagnostics.Stopwatch.GetTimestamp, so a caller reads the time
+    /// since with Stopwatch.GetElapsedTime; 0 before any. The Stopwatch rather than Environment.TickCount64, which moves
+    /// in steps of about 15.6ms. For a caller timing what the game does after its click from the moment the game was
+    /// sent it, rather than from its own next frame. See ExileInput2.LastPressDownAt.
     /// </summary>
     public static long LastPressDownAt { get; private set; }
 
