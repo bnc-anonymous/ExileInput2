@@ -225,8 +225,16 @@ internal static class Buttons
             Input.LeftDown();
 
         _pressRight = right;
-        _pressUpAt = Environment.TickCount64 + Math.Max(0, holdMs);
+        LastPressDownAt = Environment.TickCount64;
+        _pressUpAt = LastPressDownAt + Math.Max(0, holdMs);
     }
+
+    /// <summary>
+    /// When the last click's button went down, as Environment.TickCount64; 0 before any. For a caller timing what the game
+    /// does after its click from the moment the game was sent it, rather than from its own next frame. See
+    /// ExileInput2.LastPressDownAt.
+    /// </summary>
+    public static long LastPressDownAt { get; private set; }
 
     /// <summary>When the button of the click in hand comes up, as Environment.TickCount64; 0 with none down.</summary>
     private static long _pressUpAt;

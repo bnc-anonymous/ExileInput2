@@ -129,6 +129,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         b.SaveMethod("ExileInput2.ClickOnArrival", (string who, bool right) => Gated(() => ClickOnArrival(who, right)));
         b.SaveMethod("ExileInput2.CancelClickOnArrival", (string who) => Gated(() => CancelClickOnArrival(who)));
         b.SaveMethod("ExileInput2.ClickedOnArrival", (string who) => Gated(() => ClickedOnArrival(who)));
+        // When the last click's button went down, Environment.TickCount64, whoever sent it. See Buttons.LastPressDownAt.
+        b.SaveMethod("ExileInput2.LastPressDownAt", () => Gated(() => Buttons.LastPressDownAt));
         b.SaveMethod("ExileInput2.Arrived", (string who) => Gated(() => Arrived(who)));
         // The cursor taken to a point and kept moving round it until the next move. See MousePointer.Loiter.
         b.SaveMethod("ExileInput2.Loiter", (string who, Vector2 centre, float radius, int forMs, Keys[] modifiers) => Gated(() =>
