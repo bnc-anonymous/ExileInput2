@@ -1379,12 +1379,26 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         }
 
         // A queue replaced: its clicks already made go on fading out, the rest give way to the new one. See ClickPlan.Draw.
+        //
+        // **The new queue's first journey continues the last one's curve** while the cursor is still on the click that
+        // journey went to - within its creep - as a queue added to does: it leaves the way the last one came in rather
+        // than setting off straight for its target. A caller plans afresh where it waits on the game - the reforging
+        // bench's button, the reforged tablet - and every such hand-over turned a sharp corner (the player, 2026-10-20;
+        // dump 22:39:28, single-click plans replacing each other between the long ones). See ClickPlan.Make's previous.
+        Vector2? continuing = null;
+
         if (_plans.TryGetValue(who, out var replaced))
         {
             NotePlanEnd(who, replaced, $"replaced by a new plan of {Math.Max(rects.Length, points.Length)}");
 
             if (replaced.Show)
                 _fading.Add((replaced, DateTime.UtcNow, true));
+
+            var arrived = replaced.Current ?? (replaced.Next > 0 && replaced.Next <= replaced.Items.Count ? replaced.Items[replaced.Next - 1] : null);
+
+            if (arrived != null && Vector2.Distance(arrived.To, Cursor()) <= ClickPlan.CreepPx + 2f &&
+                Vector2.Distance(arrived.From, arrived.To) > 1f)
+                continuing = arrived.From;
         }
 
         // **Modifiers already down for the first click are drawn as carried, not pressed again**: a loiter holding ctrl
@@ -1399,7 +1413,7 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         _plans[who] = ClickPlan.Make(PointerFor(who), Cursor(), rects, points, rights ?? [], modifiers ?? [], show,
             () => HumanTiming.Ms(Settings.UsedClickHold), () => HumanTiming.Ms(Settings.UsedModifierTiming), ShortestOf(shortestMoveMs),
-            modifiersBefore: alreadyDown);
+            continuing, alreadyDown);
 
         return true;
     }
