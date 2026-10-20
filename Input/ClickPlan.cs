@@ -16,7 +16,8 @@ namespace ExileInput2;
 /// ExileInput2.PlanClicks.
 ///
 /// Drawn while Show is set: each journey's path, the current one bright; the click where it lands as an L or an R,
-/// bright where the button goes down and dim beside it where it comes up; and a modifier - C, S or A - bright on the
+/// bright where the button goes down and dim where it comes up - on the next journey's creep, CreepPx at most along it,
+/// or on the same point for the last click; and a modifier - C, S or A - bright on the
 /// path where it goes down and dim where it comes up. A modifier the move before still holds is handed over, not
 /// pressed again, so a batch of ctrl+clicks shows one C going down and one coming up. See Stroke.HandOver.
 /// </summary>
@@ -406,16 +407,19 @@ internal sealed class ClickPlan
             Letter(graphics, modifier, at + new Vector2(0f, -12f), bright);
         }
 
-        // The click: down bright on the point, up dim beside it, a letter's width and a little apart; its number
-        // centred above it.
+        // The click: down bright on the point, up dim where the button comes up - the next journey creeps while it is
+        // still down, so on that journey's creep, and on the point itself for the last click; its number centred above
+        // it. The up letter was drawn a letter's width to the right whatever the release did, which read as the place
+        // the button came up and was not (the player, 2026-10-20).
         var size = graphics.MeasureText("M");
         var step = new Vector2(size.X + 3f, 0f);
         var button = item.Right ? "R" : "L";
+        var released = i + 1 < Items.Count ? Items[i + 1].Path.CreptTo : item.To;
 
         if (marks.Buttons)
         {
             Letter(graphics, button, item.To, bright);
-            Letter(graphics, button, item.To + step, dim);
+            Letter(graphics, button, released, dim);
         }
 
         if (marks.Numbers)

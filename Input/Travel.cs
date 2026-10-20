@@ -268,6 +268,12 @@ internal sealed class Travel
         _creep = low;
     }
 
+    /// <summary>
+    /// Where the creep ends: the point a gliding journey has reached when the click before it lets its button up, its
+    /// start for any other. See Glide and ClickPlan.DrawItem.
+    /// </summary>
+    public Vector2 CreptTo => _glide ? Curve(_creep) : _from;
+
     private bool _glide;
     private Vector2 _control1, _control2;
 
