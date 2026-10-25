@@ -906,7 +906,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                     if (restoreHeldKeys)
                         KeyWatch.NoteHeld(key);
 
-                    Safe(() => ExileCore2.Input.KeyUp((Keys)key));
+                    // With the key's scan code, so the game takes it as the key the player holds. See PhysicalKeys.
+                    Safe(() => PhysicalKeys.Up(key));
                 }
             }
         }

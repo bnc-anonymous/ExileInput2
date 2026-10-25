@@ -52,7 +52,8 @@ internal static class KeyWatch
         {
             try
             {
-                ExileCore2.Input.KeyDown((System.Windows.Forms.Keys)key);
+                // With the key's scan code, so the player's own key-up lets it go in the game. See PhysicalKeys.
+                PhysicalKeys.Down(key);
             }
             catch
             {
