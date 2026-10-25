@@ -32,7 +32,11 @@ internal sealed class HeldKeys
     {
         try
         {
-            Input.KeyDown(key);
+            if (SentWithScanCode(key))
+                PhysicalKeys.Down((int)key);
+            else
+                Input.KeyDown(key);
+
             _down.Add(key);
         }
         catch
@@ -48,7 +52,10 @@ internal sealed class HeldKeys
     {
         try
         {
-            Input.KeyUp(key);
+            if (SentWithScanCode(key))
+                PhysicalKeys.Up((int)key);
+            else
+                Input.KeyUp(key);
         }
         catch
         {
@@ -58,6 +65,15 @@ internal sealed class HeldKeys
 
         _down.Remove(key);
     }
+
+    /// <summary>
+    /// Whether a key goes through PhysicalKeys, with its own scan code: the letters, digits and Space, which the game
+    /// should take as the player's own keys - a held W walking, as when instant loot steers a dodge roll. Modifiers and
+    /// every other key still go through ExileCore2.Input, because Buttons.Release and ReleaseEverything let modifiers go
+    /// that way, and a press and its let-go must match.
+    /// </summary>
+    private static bool SentWithScanCode(Keys key) =>
+        key is >= Keys.A and <= Keys.Z or >= Keys.D0 and <= Keys.D9 or Keys.Space;
 
     /// <summary>Taps a key, held only as long as it takes to send both halves.</summary>
     public void Tap(Keys key)
