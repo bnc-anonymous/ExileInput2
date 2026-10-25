@@ -286,7 +286,7 @@ internal static class KeyWatch
                     Note($"player's {NameOfKey((int)info.VirtualKey)} up{(Blocking ? "" : ", after the block ended")}: not to be pressed again");
             }
             else if (HeldThroughBlock.ContainsKey((int)info.VirtualKey))
-                Note($"an injected {NameOfKey((int)info.VirtualKey)} up,  (this plugin's let-go, or another program's), flags {info.Flags:X}: still to be pressed again");
+                Note($"an injected {NameOfKey((int)info.VirtualKey)} up (this plugin's let-go, or another program's), flags {info.Flags:X}: still to be pressed again");
         }
 
         return CallNextHookEx(IntPtr.Zero, code, message, data);
