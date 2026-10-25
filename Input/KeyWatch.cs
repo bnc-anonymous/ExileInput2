@@ -240,9 +240,13 @@ internal static class KeyWatch
                     Pressed.Enqueue((int)info.VirtualKey);
             }
         }
-        else if (code >= 0 && (int)message is WmKeyUp or WmSysKeyUp && Blocking)
+        else if (code >= 0 && (int)message is WmKeyUp or WmSysKeyUp && !HeldThroughBlock.IsEmpty)
         {
-            // Let go during the block: not pressed again when it ends. The key-up itself passes.
+            // Let go during the block, or after it ended and before Run pressed the held keys again: not pressed again.
+            // The key-up itself passes. Asked only while blocking, a key let go in the up to 20ms between a block's end
+            // and Restore was pressed again with the player's finger off it, and stayed down in the game; a key the
+            // game holds reads down to GetAsyncKeyState, so the next block noted it held and pressed it again too (the
+            // player's account of S staying held after instant loot, AutoExpedition, 2026-10-25).
             var info = Marshal.PtrToStructure<KeyHookInfo>(data);
 
             if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0)
