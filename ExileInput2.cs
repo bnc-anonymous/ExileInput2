@@ -895,6 +895,8 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (string.IsNullOrWhiteSpace(who))
             return false;
 
+        var letGo = new List<string>();
+
         if (ms > 0)
         {
             // Let go of what the player is holding: a held W keeps the character walking whatever arrives after it.
@@ -906,12 +908,17 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
                     if (restoreHeldKeys)
                         KeyWatch.NoteHeld(key);
 
+                    letGo.Add(KeyWatch.NameOfKey(key));
+
                     // With the key's scan code, so the game takes it as the key the player holds. See PhysicalKeys.
                     Safe(() => PhysicalKeys.Up(key));
                 }
             }
         }
 
+        KeyWatch.Note(ms > 0
+            ? $"block of {ms}ms by {who}{(KeyWatch.Blocking ? ", replacing one still on" : "")}: let go {(letGo.Count == 0 ? "nothing" : string.Join(", ", letGo))}"
+            : $"block ended by {who}{(KeyWatch.Blocking ? "" : ", none on")}");
         KeyWatch.Block(ms, (int)(cancelKey & Keys.KeyCode));
 
         return true;
@@ -1226,6 +1233,24 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
 
         // A click's button comes up when its hold is over, whoever holds the cursor now. See Buttons.Press.
         Buttons.Step();
+
+        // The key blocks' journal, to key_blocks.log. See KeyWatch.Journal.
+        if (!KeyWatch.Journal.IsEmpty)
+        {
+            var lines = new List<string>();
+
+            while (KeyWatch.Journal.TryDequeue(out var line))
+                lines.Add(line);
+
+            try
+            {
+                System.IO.File.AppendAllLines(System.IO.Path.Combine(ConfigDirectory, "key_blocks.log"), lines);
+            }
+            catch
+            {
+                // A journal line lost is no reason to stop the input.
+            }
+        }
 
         // The seed changed in the menu. See ExileInput2Settings.Seed.
         if (Settings.Seed != _seedInUse)
