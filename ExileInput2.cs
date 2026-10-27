@@ -41,8 +41,13 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// The version of what this plugin puts on the bridge, as ExileInput2.Version answers it: raised whenever a method is
     /// added or changes shape, so a consumer can tell an install too old for it from one that is missing. An install
     /// from before the version existed registers no ExileInput2.Version at all, which a consumer reads as 0.
+    ///
+    /// 1: the first with a version.
+    /// 2: ExileInput2.LastPressDownAt; letters, digits and Space held or tapped for a caller, and the player's keys pressed
+    /// again after a key block, go out with their own scan codes. Under 1 a held W did not walk in the game, and a key
+    /// pressed again after a block stayed held after the player let it go.
     /// </summary>
-    public const int BridgeVersion = 1;
+    public const int BridgeVersion = 2;
 
     public override bool Initialise()
     {
