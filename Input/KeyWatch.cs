@@ -44,37 +44,11 @@ internal static class KeyWatch
     }
 
     /// <summary>
-    /// What each key block did, line by line, timestamped: the keys let go at its start, the player's key-downs dropped
-    /// and key-ups seen during it, and the keys pressed again at its end. ExileInput2.Tick appends them to
-    /// key_blocks.log in the plugin's config directory. Kept to find why keys stayed held in the game after instant
-    /// loot's blocks, S and Space and then W, with a fix for each suspected cause in place (2026-10-25).
-    /// </summary>
-    public static readonly ConcurrentQueue<string> Journal = new();
-
-    /// <summary>Adds a line to Journal, stamped with the local time.</summary>
-    public static void Note(string line)
-    {
-        if (Journal.Count < 2000)
-            Journal.Enqueue($"{DateTime.Now:HH:mm:ss.fff} {line}");
-    }
-
-    /// <summary>The player's keys already noted dropped in this block, so a held key's repeats are noted once.</summary>
-    private static readonly ConcurrentDictionary<int, byte> DroppedThisBlock = new();
-
-    /// <summary>A virtual-key code as a name, such as W or Space.</summary>
-    public static string NameOfKey(int key) => ((System.Windows.Forms.Keys)key).ToString();
-
-    /// <summary>
     /// Presses again every key the player is still holding as a block ends, so the game sees it held once more; the
     /// player's own key-up lets it go as usual. Run once, by the hook's thread, when the block ends.
     /// </summary>
     private static void Restore()
     {
-        Note(HeldThroughBlock.IsEmpty
-            ? "block over: nothing to press again"
-            : $"block over: pressed again {string.Join(", ", HeldThroughBlock.Keys.Select(NameOfKey))}");
-        DroppedThisBlock.Clear();
-
         foreach (var key in HeldThroughBlock.Keys)
         {
             try
@@ -256,9 +230,6 @@ internal static class KeyWatch
                 // arrive together when it ends and close the game.
                 if (Blocking)
                 {
-                    if (DroppedThisBlock.TryAdd((int)info.VirtualKey, 0))
-                        Note($"player's {NameOfKey((int)info.VirtualKey)} down dropped");
-
                     // The cancel key: the player taking control back. Both blocks end now, in the hook, so this does
                     // not wait on the caller's next tick; the caller learns of it through TakeBlockCancelled.
                     if (IsCancelKey((int)info.VirtualKey))
@@ -281,12 +252,7 @@ internal static class KeyWatch
             var info = Marshal.PtrToStructure<KeyHookInfo>(data);
 
             if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0)
-            {
-                if (HeldThroughBlock.TryRemove((int)info.VirtualKey, out _))
-                    Note($"player's {NameOfKey((int)info.VirtualKey)} up{(Blocking ? "" : ", after the block ended")}: not to be pressed again");
-            }
-            else if (HeldThroughBlock.ContainsKey((int)info.VirtualKey))
-                Note($"an injected {NameOfKey((int)info.VirtualKey)} up (this plugin's let-go, or another program's), flags {info.Flags:X}: still to be pressed again");
+                HeldThroughBlock.TryRemove((int)info.VirtualKey, out _);
         }
 
         return CallNextHookEx(IntPtr.Zero, code, message, data);
