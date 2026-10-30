@@ -5,15 +5,17 @@ namespace ExileInput2;
 
 /// <summary>
 /// Key presses sent the way a keyboard sends them: with the key's own scan code, and marked extended only for the keys a
-/// keyboard marks extended. For a sent key that must pair with the player's physical one - the let-go of a held key when
-/// a key block begins, and its press again when the block ends.
+/// keyboard marks extended. Used for the let-go of a held key when a key block begins, its press again when the block
+/// ends, and the letters, digits and Space held or tapped for a caller.
 ///
-/// **Not ExileCore2.Input.KeyDown and KeyUp**, which call keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY) and keybd_event(vk,
-/// 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP): scan code 0 and every key extended (read from ExileCore2.dll's IL,
-/// 2026-10-25). A key told apart by scan code then differs from the player's: the player's release after a press sent
-/// that way left S and Space held in the game (AutoExpedition instant loot, the player's account, 2026-10-25). Whether
-/// the game tells keys apart by scan code is inferred from that, not read. Keys this plugin both presses and lets go,
-/// such as a click's modifiers, pair with each other and still go through ExileCore2.Input.
+/// ExileCore2.Input.KeyDown and KeyUp call keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY) and keybd_event(vk, 0,
+/// KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP): scan code 0 and every key extended (read from ExileCore2.dll's IL,
+/// 2026-10-25). **The game does not mind.** A W sent that way walks, and the player's own key-up lets it go (tested in
+/// game, 2026-10-30). This class was written believing otherwise, after S and Space stayed held following instant
+/// loot's key blocks (AutoExpedition, 2026-10-25). The cause was a key pressed again after the player had let go of it,
+/// in the gap between a block's end and Restore, which KeyWatch's key-up check has covered since db33f43: with that gap
+/// held open for a second, W stayed held whichever way it was sent, and never with the check on. Kept because it sends
+/// keys as a keyboard does and costs nothing, not because the game needs it.
 /// </summary>
 internal static class PhysicalKeys
 {

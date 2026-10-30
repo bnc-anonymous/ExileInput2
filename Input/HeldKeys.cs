@@ -67,10 +67,10 @@ internal sealed class HeldKeys
     }
 
     /// <summary>
-    /// Whether a key goes through PhysicalKeys, with its own scan code: the letters, digits and Space, which the game
-    /// should take as the player's own keys - a held W walking, as when instant loot steers a dodge roll. Modifiers and
-    /// every other key still go through ExileCore2.Input, because Buttons.Release and ReleaseEverything let modifiers go
-    /// that way, and a press and its let-go must match.
+    /// Whether a key goes through PhysicalKeys, with its own scan code: the letters, digits and Space, the keys a player
+    /// also holds. The game takes a key sent either way (see PhysicalKeys), so this is for sending as a keyboard does,
+    /// not a fix. Modifiers and every other key still go through ExileCore2.Input, because Buttons.Release and
+    /// ReleaseEverything let modifiers go that way, and a press and its let-go are kept the same.
     /// </summary>
     private static bool SentWithScanCode(Keys key) =>
         key is >= Keys.A and <= Keys.Z or >= Keys.D0 and <= Keys.D9 or Keys.Space;

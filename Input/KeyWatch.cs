@@ -53,7 +53,7 @@ internal static class KeyWatch
         {
             try
             {
-                // With the key's scan code, so the player's own key-up lets it go in the game. See PhysicalKeys.
+                // With the key's scan code, as a keyboard sends it; the game takes either. See PhysicalKeys.
                 PhysicalKeys.Down(key);
             }
             catch
