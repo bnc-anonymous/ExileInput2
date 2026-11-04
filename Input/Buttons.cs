@@ -140,7 +140,7 @@ internal static class Buttons
         try
         {
             foreach (var key in held)
-                Input.KeyDown(key);
+                InputOut.KeyDown(key);
         }
         catch
         {
@@ -166,12 +166,12 @@ internal static class Buttons
     {
         if (right)
         {
-            Input.RightDown();
+            InputOut.Button(true, true);
             _right = true;
         }
         else
         {
-            Input.LeftDown();
+            InputOut.Button(false, true);
             _left = true;
         }
     }
@@ -189,13 +189,13 @@ internal static class Buttons
 
         if (_left)
         {
-            Input.LeftUp();
+            InputOut.Button(false, false);
             _left = false;
         }
 
         if (_right)
         {
-            Input.RightUp();
+            InputOut.Button(true, false);
             _right = false;
         }
     }
@@ -220,9 +220,9 @@ internal static class Buttons
             EndPress();
 
         if (right)
-            Input.RightDown();
+            InputOut.Button(true, true);
         else
-            Input.LeftDown();
+            InputOut.Button(false, true);
 
         _pressRight = right;
         LastPressDownAt = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -313,9 +313,9 @@ internal static class Buttons
         try
         {
             if (right)
-                Input.RightUp();
+                InputOut.Button(true, false);
             else
-                Input.LeftUp();
+                InputOut.Button(false, false);
         }
         catch
         {
@@ -352,18 +352,18 @@ internal static class Buttons
         {
             foreach (var key in held)
                 if (!Kept(key))
-                    Input.KeyUp(key);
+                    InputOut.KeyUp(key);
 
             // And the standard three on top, in case something went down by a path that did not
             // record itself. Cheap insurance against the failure that is hardest to notice.
             if (!Kept(Keys.LControlKey))
-                Input.KeyUp(Keys.LControlKey);
+                InputOut.KeyUp(Keys.LControlKey);
 
             if (!Kept(Keys.LShiftKey))
-                Input.KeyUp(Keys.LShiftKey);
+                InputOut.KeyUp(Keys.LShiftKey);
 
             if (!Kept(Keys.LMenu))
-                Input.KeyUp(Keys.LMenu);
+                InputOut.KeyUp(Keys.LMenu);
         }
         catch
         {

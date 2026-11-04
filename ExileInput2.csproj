@@ -5,6 +5,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <PlatformTarget>x64</PlatformTarget>
     <LangVersion>latest</LangVersion>
+    <!-- For Reroute, which patches win32u's input system calls in this process. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DebugType>embedded</DebugType>
     <PathMap>$(MSBuildProjectDirectory)=$(MSBuildProjectName)</PathMap>
     <EmbedAllSources>true</EmbedAllSources>
@@ -33,6 +35,36 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>ExileInput2Tests</_Parameter1>
     </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    hardware-input, for Use Hardware Input: the repository beside this one, or in the HUD's own folder when this is
+    Plugins\Source\ExileInput2, or wherever HardwareInputProject points. Never in Plugins\Source itself: the HUD compiles
+    every csproj it finds there, and finding HardwareInput.csproj both there and as this reference fails its whole build.
+    Built in only when it is found, so an install without it still builds; its checkbox then says it is not available.
+  -->
+  <PropertyGroup>
+    <HardwareInputProject Condition="'$(HardwareInputProject)' == '' And Exists('$(MSBuildProjectDirectory)\..\hardware-input\src\HardwareInput\HardwareInput.csproj')">$(MSBuildProjectDirectory)\..\hardware-input\src\HardwareInput\HardwareInput.csproj</HardwareInputProject>
+    <HardwareInputProject Condition="'$(HardwareInputProject)' == ''">$(MSBuildProjectDirectory)\..\..\..\hardware-input\src\HardwareInput\HardwareInput.csproj</HardwareInputProject>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(HardwareInputProject)')">
+    <DefineConstants>$(DefineConstants);HARDWARE_INPUT</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(HardwareInputProject)')">
+    <!--
+      Built as itself, not for the HUD's win-x64: the HUD builds plugins for that runtime but does not restore a
+      referenced project for it, so hardware-input's restore - made by any ordinary build of it - has no win-x64 entry,
+      and the build stopped with NETSDK1047 (2026-11-04). It is a plain library; nothing in it differs by runtime.
+    -->
+    <ProjectReference Include="$(HardwareInputProject)" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
+
+    <!--
+      hardware-input talks to the boards' COM ports through System.IO.Ports, which the HUD does not carry and a library's
+      build does not copy. Its Windows build, put beside the plugin, at the version hardware-input asks for.
+    -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" GeneratePathProperty="true" />
+    <None Include="$(PkgSystem_IO_Ports)\runtimes\win\lib\net8.0\System.IO.Ports.dll" Link="System.IO.Ports.dll"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

@@ -33,9 +33,9 @@ internal sealed class HeldKeys
         try
         {
             if (SentWithScanCode(key))
-                PhysicalKeys.Down((int)key);
+                InputOut.PhysicalDown((int)key);
             else
-                Input.KeyDown(key);
+                InputOut.KeyDown(key);
 
             _down.Add(key);
         }
@@ -53,9 +53,9 @@ internal sealed class HeldKeys
         try
         {
             if (SentWithScanCode(key))
-                PhysicalKeys.Up((int)key);
+                InputOut.PhysicalUp((int)key);
             else
-                Input.KeyUp(key);
+                InputOut.KeyUp(key);
         }
         catch
         {
@@ -114,6 +114,14 @@ internal sealed class HeldKeys
     /// </summary>
     public static void ReleaseEverything()
     {
+        // On the boards, everything this plugin injected comes up, and nothing the player holds: the boards know which
+        // is which. See Boards.ReleaseAll.
+        if (Boards.InUse)
+        {
+            Boards.ReleaseAll();
+            return;
+        }
+
         foreach (var key in new[]
                  {
                      Keys.ShiftKey, Keys.LShiftKey, Keys.RShiftKey,
@@ -124,7 +132,7 @@ internal sealed class HeldKeys
         {
             try
             {
-                Input.KeyUp(key);
+                InputOut.KeyUp(key);
             }
             catch
             {

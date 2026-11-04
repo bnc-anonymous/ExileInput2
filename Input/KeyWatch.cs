@@ -54,7 +54,7 @@ internal static class KeyWatch
             try
             {
                 // With the key's scan code, as a keyboard sends it; the game takes either. See PhysicalKeys.
-                PhysicalKeys.Down(key);
+                InputOut.PhysicalDown(key);
             }
             catch
             {
@@ -132,13 +132,26 @@ internal static class KeyWatch
         return cancelled;
     }
 
+    /// <summary>The boards' lock ended for the block's cancel key: a block the player cancelled. See Boards.OnLockChanged.</summary>
+    public static void NoteBlockCancelled() => _blockCancelled = true;
+
     /// <summary>
     /// Drops the player's key-downs for this long from now, replacing any block; 0 ends it. A press of cancelKey, if
-    /// not 0, ends it early, and the mouse block with it.
+    /// not 0, ends it early, and the mouse block with it. On the boards, the keyboard board's lock instead: see
+    /// Boards.LockKeyboard.
     /// </summary>
     public static void Block(int ms, int cancelKey = 0)
     {
         ms = Math.Clamp(ms, 0, MostBlockMs);
+
+        if (Boards.InUse)
+        {
+            if (ms > 0)
+                _blockCancelled = false;
+
+            Boards.LockKeyboard(ms, cancelKey);
+            return;
+        }
 
         lock (Gate)
         {
@@ -223,7 +236,11 @@ internal static class KeyWatch
         {
             var info = Marshal.PtrToStructure<KeyHookInfo>(data);
 
-            if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0)
+            // On the boards, this plugin's keys reach the hook without the injected flag, as the player's do; the board
+            // says which it is holding. So do the keys the keyboard board presses again as its lock ends, which the
+            // player was already holding. See Boards.IsOwnKey.
+            if ((info.Flags & (LlkhfInjected | LlkhfLowerIlInjected)) == 0 &&
+                !Boards.IsOwnKey((int)info.VirtualKey) && !Boards.KeysJustUnlocked)
             {
                 // Dropped, and not remembered for Restore: only a key already held when the block began is pressed
                 // again. Remembering presses made during the block would let Alt then F4, both pressed while blocked,

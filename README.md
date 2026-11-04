@@ -72,6 +72,42 @@ where it was put, so mid-journey the reported position and the last sent positio
 and a check written as "is the cursor where I last put it" stops on the first step of every journey
 it ever makes and blames the player for it.
 
+## Hardware input
+
+**Use Hardware Input** (under Advanced) sends every key, click and cursor move through the
+[hardware-input](../hardware-input) passthrough boards, which sit between the real keyboard and mouse
+and the PC, so the game sees only the real devices. Nothing changes for a consumer.
+
+- The plugin builds against `hardware-input/src/HardwareInput` when that repository sits beside this
+  one, or in the HUD's own folder (beside `Plugins`, never inside `Plugins\Source`: the HUD compiles
+  every project it finds there, and meeting `HardwareInput.csproj` twice fails its whole build), or
+  wherever `HardwareInputProject` points. Without it the plugin still builds, and the box says
+  hardware input is not available.
+- Ticking it with no board's Debug Probe plugged in leaves it unticked, with a warning. If the boards
+  fail to open, or are lost later, it unticks itself and says why, in the menu and the log.
+- The mouse board's own word that the player moved or clicked stops the caller, as a moved mouse
+  does. Each board stops only for its own device, so walking on WASD does not cut a click short.
+- The keyboard board merges the player's keys with injected ones rather than refusing injection
+  while a real key is held, so a flask still goes out while walking on W. Keys stop a caller only
+  when it asks, as before.
+- **Reroute Other Plugin Inputs** (under Advanced) sends the keys, clicks, wheel and cursor moves of the HUD's other
+  plugins - ReAgent's flask presses, a plugin using `ExileCore2.Input` - on the boards instead, while
+  the game is in front. It patches the two system calls every way of sending ends in,
+  `win32u!NtUserSendInput` and `NtUserSetCursorPos`, in the HUD's process only, so nothing is missed
+  whichever wrapper a plugin uses. Input goes to the boards on the plugin's own thread, at once:
+  nothing waits on ExileInput2's claims or blocks. Typed text and keys the board cannot send go the
+  old way. The patch is refused, with a warning, if the stubs are not the shape expected.
+- On boards older than firmware 0.3, a key or button let go within 20 ms of being pressed is held
+  until then: those boards send what is held in each USB report, and a press shorter than one never
+  reached the game. From 0.3 the boards report every press and release themselves, and nothing is
+  held back.
+- Key and mouse blocks become the boards' locks. The block's cancel key ends one. The keys still held
+  when it ends come back from the boards' resume list: letters, digits, Ctrl, Shift, Alt and Space.
+- Mouse 4 and Mouse 5 never count as the player taking over: they are hotkeys (AutoExpedition's action
+  key is Mouse 4). Moving the mouse, the wheel, and the left and right buttons do.
+- The board moves the cursor by counts, not to a point, so each point is steered onto from the
+  Windows cursor. Paths, timing, and the follow and arrival checks are still this plugin's.
+
 ## Why nothing is shared but a file
 
 Everything crossing the bridge is a type both sides already have — `RectangleF`, `Vector2`, `Keys`,

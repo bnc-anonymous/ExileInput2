@@ -141,6 +141,9 @@ internal sealed class MousePointer
     /// </summary>
     public void IgnorePlayerFor(int ms) => _playerIgnoredUntil = ms > 0 ? Now() + TimeSpan.FromMilliseconds(ms) : TimeSpan.Zero;
 
+    /// <summary>Whether the player's mouse does not stop this pointer now. See IgnorePlayerFor.</summary>
+    public bool IgnoringPlayer => _playerIgnoredUntil > Now();
+
     private TimeSpan Now() => Clock?.Invoke() ?? TimeSpan.FromMilliseconds(Environment.TickCount64);
 
     private void Remember(Vector2 client)
@@ -954,7 +957,7 @@ internal sealed class MousePointer
         var screen = new Vector2(origin.X + client.X, origin.Y + client.Y);
 
         MouseBlock.OwnMoveTo((int)screen.X, (int)screen.Y);
-        Input.SetCursorPos(screen);
+        InputOut.CursorTo(screen);
     }
 
     /// <summary>How far the cursor is from where it was sent, in client-space pixels.</summary>

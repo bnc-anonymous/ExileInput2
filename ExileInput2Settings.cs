@@ -415,4 +415,96 @@ public class ExileInput2Settings : ISettings
 
     /// <summary>A seed at random: a cryptographic draw, never nought, which means none.</summary>
     internal static int NewSeed() => System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue);
+
+    /// <summary>The Advanced section, collapsed, last in the menu, as AutoExpedition's sections are. See AdvancedSettings.</summary>
+    [Submenu(CollapsedByDefault = true)]
+    public AdvancedSettings Advanced { get; set; } = new AdvancedSettings();
+}
+
+/// <summary>The Advanced section: the hardware-input switches.</summary>
+public class AdvancedSettings
+{
+    /// <summary>Send input through the hardware-input boards. Unticks itself, with Boards.Warning saying why, when they cannot be used. See Boards.</summary>
+    [IgnoreMenu]
+    public ToggleNode UseHardwareInput { get; set; } = new ToggleNode(false);
+
+    /// <summary>Send other plugins' input through the boards too. Needs UseHardwareInput. See Reroute.</summary>
+    [IgnoreMenu]
+    public ToggleNode RerouteOtherInput { get; set; } = new ToggleNode(false);
+
+    /// <summary>Both checkboxes, drawn here so ticking hardware input checks for the boards first.</summary>
+    [JsonIgnore]
+    public CustomNode HardwareInputUi { get; set; }
+
+    public AdvancedSettings()
+    {
+        HardwareInputUi = new CustomNode(DrawHardwareInput);
+    }
+
+    private void DrawHardwareInput()
+    {
+        var use = UseHardwareInput.Value;
+
+        if (ImGuiNET.ImGui.Checkbox("Use Hardware Input##exileInput2HardwareInput", ref use))
+        {
+            // Not ticked at all on a system without the boards; one with them is opened by the plugin's next tick.
+            if (use && Boards.Unavailable() is { } why)
+            {
+                Boards.Warning = why;
+                use = false;
+            }
+            else if (use)
+            {
+                Boards.Warning = "";
+            }
+
+            UseHardwareInput.Value = use;
+        }
+
+        Help("Send input through the hardware-input boards.");
+
+        if (use && Boards.Status is { Length: > 0 } status)
+            ImGuiNET.ImGui.TextDisabled(status);
+
+        if (!use)
+            Warn(Boards.Warning);
+
+        // Kept as set while hardware input is off, and greyed out: it means nothing without the boards.
+        ImGuiNET.ImGui.BeginDisabled(!use);
+
+        var reroute = RerouteOtherInput.Value;
+
+        if (ImGuiNET.ImGui.Checkbox("Reroute Other Plugin Inputs##exileInput2Reroute", ref reroute))
+        {
+            RerouteOtherInput.Value = reroute;
+
+            if (reroute)
+                Reroute.Warning = "";
+        }
+
+        ImGuiNET.ImGui.EndDisabled();
+        Help("Send other plugins' input (e.g. ReAgent) through the boards too.");
+
+        if (!reroute)
+            Warn(Reroute.Warning);
+    }
+
+    private static void Help(string text)
+    {
+        ImGuiNET.ImGui.SameLine();
+        ImGuiNET.ImGui.TextDisabled("(?)");
+
+        if (ImGuiNET.ImGui.IsItemHovered())
+            ImGuiNET.ImGui.SetTooltip(text);
+    }
+
+    private static void Warn(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        ImGuiNET.ImGui.PushTextWrapPos(0f);
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1f, 0.75f, 0.2f, 1f), text);
+        ImGuiNET.ImGui.PopTextWrapPos();
+    }
 }

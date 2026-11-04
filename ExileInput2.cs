@@ -901,7 +901,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (string.IsNullOrWhiteSpace(who))
             return false;
 
-        if (ms > 0)
+        // On the boards, the lock lets go of what the player holds and presses again what is still held at its end, from
+        // the boards' resume list. See Boards.LockKeyboard.
+        if (ms > 0 && !Boards.InUse)
         {
             // Let go of what the player is holding: a held W keeps the character walking whatever arrives after it.
             // The Windows keys (0x5B, 0x5C) are left alone: a let-go with nothing pressed between opens the Start menu.
@@ -1230,6 +1232,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         if (System.Threading.Interlocked.Exchange(ref _moverFault, null) is { } fault)
             LogError($"ExileInput2: the input thread caught {fault}", 10f);
 
+        // The hardware-input boards opened, closed or lost, as Use Hardware Input asks. See Boards.
+        StepBoards();
+
         // A click's button comes up when its hold is over, whoever holds the cursor now. See Buttons.Press.
         Buttons.Step();
 
@@ -1347,12 +1352,118 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
     /// <summary>Who held the cursor last tick, so an expiry can be noticed and tidied after.</summary>
     private string _held;
 
+    /// <summary>
+    /// Opens or closes the hardware-input boards as Use Hardware Input asks, and moves this plugin's input onto them
+    /// once open. When they cannot be opened, or are lost, the box is unticked and the reason shown under it and logged.
+    /// The mouse board's word that the player moved or clicked stops the caller as a moved mouse does, unless it asked
+    /// for the player's mouse to be ignored.
+    /// </summary>
+    private void StepBoards()
+    {
+        if (Boards.TakeFailure() is { } why)
+        {
+            Reroute.Uninstall();
+            SwitchInput(false);
+            Boards.Close();
+
+            if (Settings.Advanced.UseHardwareInput.Value)
+            {
+                Settings.Advanced.UseHardwareInput.Value = false;
+                _SaveSettings();
+            }
+
+            LogError($"ExileInput2: {why}", 10f);
+            return;
+        }
+
+        if (Settings.Advanced.UseHardwareInput.Value && Boards.Closed)
+        {
+            Boards.Start();
+        }
+        else if (!Settings.Advanced.UseHardwareInput.Value && !Boards.Closed)
+        {
+            Reroute.Uninstall();
+            SwitchInput(false);
+            Boards.Close();
+        }
+
+        if (Boards.Open && !Boards.InUse)
+            SwitchInput(true);
+
+        if (Boards.InUse && Boards.TakeInterruptedByPlayer() is { } saw && _lease.Holder is { } holder &&
+            !PointerFor(holder).IgnoringPlayer)
+            PointerFor(holder).Stop(StopReason.PlayerMovedTheMouse, saw);
+
+        // Other plugins' input onto the boards, while the game is in front: elsewhere it is somebody else's. The patch
+        // stays in while the box is ticked and the boards are in use, and only its switch follows the game. See Reroute.
+        if (Settings.Advanced.RerouteOtherInput.Value && Boards.InUse)
+        {
+            if (Reroute.Install() is { } refused)
+            {
+                Settings.Advanced.RerouteOtherInput.Value = false;
+                _SaveSettings();
+                LogError($"ExileInput2: {refused}", 10f);
+            }
+            else
+            {
+                Reroute.SetActive(GameInFront());
+            }
+        }
+        else
+        {
+            Reroute.Uninstall();
+        }
+    }
+
+    private bool GameInFront()
+    {
+        try
+        {
+            return GameController.Window.IsForeground();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Moves this plugin's input onto the boards or off them. Whatever is held comes up first, the way it went down, and
+    /// the caller holding the cursor is stopped with TakenOver: a key pressed one way cannot be let go the other.
+    /// </summary>
+    private void SwitchInput(bool toBoards)
+    {
+        if (Boards.InUse == toBoards)
+            return;
+
+        if (_lease.Holder is { } holder)
+        {
+            PointerFor(holder).Stop(StopReason.TakenOver, toBoards ? "input moved to the hardware boards" : "input moved off the hardware boards");
+            Abandon(holder, StopReason.TakenOver);
+        }
+
+        Buttons.EndPress();
+
+        foreach (var keys in _keys.Values)
+            keys.ReleaseAll();
+
+        Buttons.Release();
+        HeldKeys.ReleaseEverything();
+        MouseBlock.Stop();
+        KeyWatch.Block(0);
+
+        Boards.InUse = toBoards;
+    }
+
     /// <summary>Brings the modifiers up on the way out, whatever the way out turned out to be.</summary>
     private static void LetGoOfEverything(object sender, EventArgs e)
     {
         try
         {
             HeldKeys.ReleaseEverything();
+
+            // Closing sends the boards' releases now; left open, they let go on their own once the link goes quiet.
+            Boards.Close();
         }
         catch
         {
@@ -1679,6 +1790,12 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         MouseBlock.Stop();
         KeyWatch.Stop();
         KeyWatch.Block(0);
+
+        // Other plugins' input left to Windows again, and the boards' COM ports given back so the plugin loaded next can
+        // open them. See Reroute and Boards.
+        Reroute.Uninstall();
+        Boards.Close();
+        Boards.InUse = false;
         _lease.Break();
     }
 }

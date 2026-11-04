@@ -33,13 +33,22 @@ internal static class MouseBlock
     /// <summary>Kept in a field so the delegate the hook calls is not collected while installed.</summary>
     private static readonly LowLevelMouseProc Proc = Hook;
 
-    /// <summary>Whether the player's mouse is being dropped now.</summary>
-    public static bool Blocking => Environment.TickCount64 < Interlocked.Read(ref _untilTicks);
+    /// <summary>Whether the player's mouse is being dropped now: by the hook, or by the mouse board's lock.</summary>
+    public static bool Blocking => Environment.TickCount64 < Interlocked.Read(ref _untilTicks) || Boards.MouseBlocked;
 
-    /// <summary>Drops the player's mouse for this long from now, or extends a block already going.</summary>
+    /// <summary>
+    /// Drops the player's mouse for this long from now, or extends a block already going. On the boards, the mouse
+    /// board's lock instead: the hook cannot tell the board's input from the player's. See Boards.LockMouse.
+    /// </summary>
     public static void Block(int ms)
     {
         ms = Math.Clamp(ms, 0, MostMs);
+
+        if (Boards.InUse)
+        {
+            Boards.LockMouse(ms);
+            return;
+        }
 
         lock (Gate)
         {
@@ -72,8 +81,14 @@ internal static class MouseBlock
     /// <summary>Whether the hook is wanted: a block, or a key block watching for a mouse button. See Watch.</summary>
     private static bool Wanted => Blocking || KeyWatch.Blocking && KeyWatch.CancelKeyIsMouseButton;
 
-    /// <summary>Ends any block now.</summary>
-    public static void Stop() => Interlocked.Exchange(ref _untilTicks, 0);
+    /// <summary>Ends any block now, the mouse board's lock included.</summary>
+    public static void Stop()
+    {
+        Interlocked.Exchange(ref _untilTicks, 0);
+
+        if (Boards.InUse)
+            Boards.LockMouse(0);
+    }
 
     /// <summary>Marks a screen point as this plugin's own cursor move, so the hook lets it through. See Run.</summary>
     public static void OwnMoveTo(int x, int y) => Interlocked.Exchange(ref _ownMove, ((long)x << 32) | (uint)y);
