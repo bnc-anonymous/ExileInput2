@@ -223,6 +223,7 @@ internal static partial class Boards
         Status = "";
         StopSteering();
         OwnKeys.Clear();
+        _buttonsHeld = 0;
 
         if (devices == null)
             return;
@@ -280,6 +281,9 @@ internal static partial class Boards
 
     private const int OwnKeyGraceMs = 150;
 
+    /// <summary>Whether the keyboard board holds this key for this plugin: pressed and not yet let go.</summary>
+    private static bool HeldOnBoard(int key) => OwnKeys.TryGetValue(key, out var until) && until == long.MaxValue;
+
     /// <summary>Whether this key was sent on the keyboard board, and not the player's. See OwnKeys.</summary>
     public static bool IsOwnKey(int key) => InUse && OwnKeys.TryGetValue(key, out var until) && Environment.TickCount64 < until;
 
@@ -312,6 +316,12 @@ internal static partial class Boards
             }
             else
             {
+                // Not held on the board: nothing to let go of, and nothing sent. Releases are sent "just in case" on
+                // every way out - Buttons.Release lets go of Ctrl, Shift and Alt each time a caller gives the cursor
+                // back - which cost nothing as Windows input but is a message on the board's link each.
+                if (!HeldOnBoard(code))
+                    return true;
+
                 var heldMs = Environment.TickCount64 - (KeyDownAt.TryGetValue(code, out var at) ? at : long.MinValue / 2);
 
                 if (_holdBack && heldMs < ShortestHoldMs)
@@ -396,6 +406,7 @@ internal static partial class Boards
         OwnKeys.Clear();
         HeldBackKeyUps.Clear();
         HeldBackButtonUps.Clear();
+        _buttonsHeld = 0;
         Forget(devices.Keyboard?.ReleaseAllAsync());
         Forget(devices.Mouse?.ReleaseAllAsync());
     }
@@ -483,6 +494,10 @@ internal static partial class Boards
             return;
         }
 
+        // Not held on the board, and no let-go of it waiting: nothing to let go of, and nothing sent. See Key.
+        if ((_buttonsHeld & (1 << which)) == 0 && !HeldBackButtonUps.ContainsKey(which))
+            return;
+
         var heldMs = Environment.TickCount64 - (ButtonDownAt.TryGetValue(which, out var at) ? at : long.MinValue / 2);
 
         if (!_holdBack || heldMs >= ShortestHoldMs)
@@ -501,16 +516,26 @@ internal static partial class Boards
         });
     }
 
+    /// <summary>The buttons the mouse board holds for this plugin, as bits: 1 left, 2 right, 4 middle, 8 back, 16 forward.</summary>
+    private static volatile int _buttonsHeld;
+
     private static void ButtonNow(HardwareInput.MouseButton button, bool down)
     {
         try
         {
             var mouse = _devices?.Mouse;
+            var bit = 1 << (int)button;
 
             if (down)
+            {
+                _buttonsHeld |= bit;
                 mouse?.ButtonDown(button);
+            }
             else
+            {
+                _buttonsHeld &= ~bit;
                 mouse?.ButtonUp(button);
+            }
         }
         catch
         {
@@ -538,8 +563,9 @@ internal static partial class Boards
 
     private static void OnMouseInterrupted(object sender, HardwareInput.Passthrough.InterruptedEventArgs e)
     {
-        // The player has the mouse: the steering stops fighting them for it.
+        // The player has the mouse: the steering stops fighting them for it. The board let go of its buttons.
         DropTarget();
+        _buttonsHeld = 0;
 
         // Kinds None is the other board's escape relayed by PassthroughDevices.
         if (e.Kinds == HardwareInput.Passthrough.PhysicalActivity.None)
