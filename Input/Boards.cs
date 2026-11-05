@@ -152,6 +152,7 @@ internal static partial class Boards
             await devices.ConfigureInputsAsync(InputRules(0)).ConfigureAwait(false);
 
             devices.Mouse.Link.Interrupted += OnMouseInterrupted;
+            devices.Mouse.Link.PhysicalActivity += OnMouseActivity;
             devices.Keyboard.Link.Interrupted += OnKeyboardInterrupted;
             devices.Mouse.Link.LockChanged += OnLockChanged;
             devices.Keyboard.Link.LockChanged += OnLockChanged;
@@ -560,6 +561,28 @@ internal static partial class Boards
 
     /// <summary>When a lock last ended for an escape input, as Environment.TickCount64. See OnMouseInterrupted.</summary>
     private static long _escapedAt;
+
+    /// <summary>
+    /// The player's own mouse, as the mouse board reports it: movement past its threshold (6 counts in 50ms), a button
+    /// other than the exempt side buttons, or the wheel - whether or not anything is being injected. The board sees the
+    /// real device before the PC does, so this is the player's hand and nothing else, where the position check it
+    /// replaces on the boards (MousePointer.WatchForPlayer) guesses from where the cursor is, and a steered cursor is
+    /// never exactly where it was put: it stopped Currency Exchange Flipper with a cursor 14px ahead of its path and
+    /// nobody touching the mouse (2026-11-04). Not while a mouse block hides the player's input.
+    /// </summary>
+    private static void OnMouseActivity(object sender, HardwareInput.Passthrough.PhysicalActivityEventArgs e)
+    {
+        const HardwareInput.Passthrough.PhysicalActivity hand =
+            HardwareInput.Passthrough.PhysicalActivity.Move | HardwareInput.Passthrough.PhysicalActivity.Button |
+            HardwareInput.Passthrough.PhysicalActivity.Wheel;
+
+        if ((e.Kinds & hand) == 0 || MouseBlocked || _devices?.Mouse?.Link.IsLocked == true)
+            return;
+
+        // The player has the mouse: the steering stops fighting them for it.
+        DropTarget();
+        System.Threading.Interlocked.Exchange(ref _interruptedBy, $"the mouse board saw the player's {e.Kinds & hand}");
+    }
 
     private static void OnMouseInterrupted(object sender, HardwareInput.Passthrough.InterruptedEventArgs e)
     {

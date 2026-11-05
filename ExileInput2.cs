@@ -469,6 +469,9 @@ public class ExileInput2 : BaseSettingsPlugin<ExileInput2Settings>
         pointer.OnModifier ??= key => KeysFor(who).Hold(key);
         pointer.TolerancePx = _tolerances.TryGetValue(who, out var px) ? px : Settings.TolerancePx.Value;
         pointer.StopTolerancePx = Settings.StopTolerancePx.Value;
+
+        // On the boards the mouse board says when the player's hand is on the mouse; the guess from positions is off.
+        pointer.WatchForPlayer = !Boards.InUse;
         pointer.ArriveTimeoutMs = Settings.ArriveTimeoutMs.Value;
 
         // **A drag is not a human-looking journey and must not be one.**

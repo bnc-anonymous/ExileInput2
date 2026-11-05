@@ -141,6 +141,13 @@ internal sealed class MousePointer
     /// </summary>
     public void IgnorePlayerFor(int ms) => _playerIgnoredUntil = ms > 0 ? Now() + TimeSpan.FromMilliseconds(ms) : TimeSpan.Zero;
 
+    /// <summary>
+    /// Whether a cursor found somewhere this pointer never put it stops it, as the player's hand. Off on the hardware-input
+    /// boards, where the mouse board reports the player's hand itself and a steered cursor is never exactly where it was
+    /// put. See Boards.OnMouseActivity.
+    /// </summary>
+    public bool WatchForPlayer { get; set; } = true;
+
     /// <summary>Whether the player's mouse does not stop this pointer now. See IgnorePlayerFor.</summary>
     public bool IgnoringPlayer => _playerIgnoredUntil > Now();
 
@@ -842,7 +849,7 @@ internal sealed class MousePointer
 
         // Before advancing, not after: a step that has already moved the cursor has overwritten the
         // evidence of where the player put it. Not while the player is being ignored. See IgnorePlayerFor.
-        if (Now() >= _playerIgnoredUntil && Interfered())
+        if (WatchForPlayer && Now() >= _playerIgnoredUntil && Interfered())
         {
             Stop(StopReason.PlayerMovedTheMouse);
             return;
